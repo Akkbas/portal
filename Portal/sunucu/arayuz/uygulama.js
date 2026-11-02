@@ -122,6 +122,21 @@ function belgeKart(m) {
       ${uz === "pdf" ? `<img loading="lazy" src="/kucuk/${m.id}" alt="" style="position:absolute;inset:0" onerror="this.remove()" onload="if(!this.naturalWidth)this.remove()">` : ""}</div>
     <h4>${esc(m.ad)}</h4><span>${boyutFmt(m.boyut)} · ${goreceTarih(m.tarih)}</span></div>`;
 }
+function sayilarMetni(say, kisa = false) {
+  const ad = { video: "video", foto: "fotoğraf", muzik: "şarkı", belge: "belge" };
+  return ["video", "foto", "muzik", "belge"].filter((t) => say[t]).map((t) => `${say[t].toLocaleString("tr-TR")} ${ad[t]}`).join(kisa ? " · " : " · ");
+}
+const klasorHref = (yol, t) => "#/klasor?yol=" + encodeURIComponent(yol) + (t ? "&t=" + t : "");
+function klasorKart(k) {
+  return `<a class="kkart" href="${klasorHref(k.yol)}">
+    <div class="kapak" style="--k:${renk(k.ad)}">
+      <div class="yer-tutucu">${IKON.klasor}</div>
+      ${k.kapak ? `<img loading="lazy" src="/kucuk/${k.kapak}" alt="" onerror="this.remove()" onload="if(!this.naturalWidth)this.remove()">` : ""}
+      <div class="kkart-ust">${["video", "foto", "muzik", "belge"].filter((t) => k.sayilar[t]).map((t) => `<span>${IKON[t]}${k.sayilar[t]}</span>`).join("")}</div>
+    </div>
+    <h4>${esc(k.ad)}</h4><span>${sayilarMetni(k.sayilar)}</span></a>`;
+}
+
 function fotoKucuk(m, i) {
   return `<a href="javascript:void(0)" data-i="${i}" data-id="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="${esc(m.ad)}" onerror="this.style.opacity=0"></a>`;
 }
@@ -131,8 +146,8 @@ function bosEkran(ikon, baslik, metin) {
 function klasorBilgisi(tur) {
   const ad = { video: "Videolar", foto: "Fotoğraflar", muzik: "Müzik", belge: "Belgeler" }[tur];
   const bulunan = DURUM.bilgi?.klasorler?.[tur] || [];
-  if (bulunan.length) return `Klasör: ${bulunan.map((b) => `<code>${esc(b)}</code>`).join(", ")}`;
-  return `Diskinin kökünde <code>${ad}</code> adında bir klasör oluşturup dosyalarını içine koy, sonra <a href="#/ayarlar" style="color:var(--vurgu)">yeniden tara</a>.`;
+  if (false) return "";
+  return `Diskindeki tüm klasörler taranır. Yeni eklediğin dosyalar için <a href="#/ayarlar" style="color:var(--vurgu)">yeniden tara</a>.`;
 }
 
 /* sonsuz kaydırma */
@@ -158,7 +173,7 @@ function sonsuzListe(kap, getir, ciz, sayfaBoyu = 60) {
 /* ---------------- yönlendirici ---------------- */
 const SAYFALAR = {
   "": sayfaAna, ara: sayfaAra, videolar: sayfaVideolar, izle: sayfaIzle, fotograflar: sayfaFotograflar,
-  muzik: sayfaMuzik, belgeler: sayfaBelgeler, wiki: sayfaWiki, dosyalar: sayfaDosyalar, ayarlar: sayfaAyarlar,
+  muzik: sayfaMuzik, belgeler: sayfaBelgeler, klasorler: sayfaKlasorler, klasor: sayfaKlasor, wiki: sayfaWiki, dosyalar: sayfaDosyalar, ayarlar: sayfaAyarlar,
 };
 let aktifTemizle = null;
 async function yonlendir() {
@@ -166,7 +181,7 @@ async function yonlendir() {
   const ad = parcalar[0] || "";
   const f = SAYFALAR[ad] || sayfaAna;
   if (aktifTemizle) { try { aktifTemizle(); } catch (e) {} aktifTemizle = null; }
-  $$(".yan a").forEach((a) => a.classList.toggle("aktif", a.dataset.sayfa === (ad || "ana") || (ad === "izle" && a.dataset.sayfa === "videolar")));
+  $$(".yan a").forEach((a) => a.classList.toggle("aktif", a.dataset.sayfa === (ad || "ana") || (ad === "izle" && a.dataset.sayfa === "videolar") || (ad === "klasor" && a.dataset.sayfa === "klasorler")));
   document.body.classList.remove("yan-acik");
   if (ad !== "ara") $("#aramaKutu").value = "";
   sayfa.innerHTML = '<div class="yukleniyor"></div>';
@@ -183,7 +198,7 @@ window.addEventListener("hashchange", yonlendir);
 /* ---------------- ANA SAYFA ---------------- */
 async function sayfaAna() {
   document.title = (DURUM.bilgi?.ad || "Portal") + " — Ana sayfa";
-  const [v, kesfet] = await Promise.all([api("/api/ana"), DURUM.wikiVar ? api("/api/wiki/kesfet?adet=5").catch(() => []) : []]);
+  const [v, kesfet, kok] = await Promise.all([api("/api/ana"), DURUM.wikiVar ? api("/api/wiki/kesfet?adet=5").catch(() => []) : [], api("/api/klasor-ozet").catch(() => ({ klasorler: [] }))]);
   const saat = new Date().getHours();
   const selam = saat < 5 ? "İyi geceler" : saat < 12 ? "Günaydın" : saat < 18 ? "İyi günler" : saat < 22 ? "İyi akşamlar" : "İyi geceler";
   const s = v.sayilar;
@@ -199,6 +214,11 @@ async function sayfaAna() {
       <a href="#/muzik">${IKON.muzik}<b>${s.muzik}</b> şarkı</a>
       <a href="#/belgeler">${IKON.belge}<b>${s.belge}</b> belge</a>
     </div></section>`;
+  if (kok.klasorler.length) {
+    const son = [...kok.klasorler].sort((a, b) => b.son - a.son);
+    h += `<section class="bolum"><div class="bolum-bas"><h2>Klasörlerin</h2><a href="#/klasorler">Tümünü gör (${kok.klasorler.length})</a></div>
+      <div class="kizgara">${son.slice(0, 12).map(klasorKart).join("")}</div></section>`;
+  }
   if (v.devam.length) h += `<section class="bolum"><div class="bolum-bas"><h2>İzlemeye devam et</h2></div><div class="yatay">${v.devam.map(vkart).join("")}</div></section>`;
   if (v.onerilen.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Senin için önerilen videolar</h2><a href="#/videolar">Tümünü gör</a></div><div class="izgara">${v.onerilen.slice(0, 8).map(vkart).join("")}</div></section>`;
   if (kesfet.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Vikipedi'den bugün</h2><a href="#/wiki">Keşfetmeye devam et</a></div><div class="makale-izgara">${kesfet.map((o, i) => makaleKart(o, i === 0)).join("")}</div></section>`;
@@ -244,10 +264,11 @@ async function sayfaAra(_, q) {
   const r = await api(`/api/ara?q=${encodeURIComponent(sorgu)}&bas=${basla}`);
   const w = r.vikipedi.sonuclar;
   const d = r.dosyalar || {};
-  const yerelVar = sekme === "hepsi" && basla === 0 && (d.video?.length || d.foto?.length || d.muzik?.length || d.belge?.length);
+  const yerelVar = sekme === "hepsi" && basla === 0 && (d.klasorler?.length || d.video?.length || d.foto?.length || d.muzik?.length || d.belge?.length);
   let sol = "";
   const yerelBlok = () => {
     let b = "";
+    if (d.klasorler?.length) b += `<div class="yerel-sonuclar"><h4>${IKON.klasor}Klasörler</h4><div class="yatay">${d.klasorler.map(klasorKart).join("")}</div></div>`;
     if (d.video?.length) b += `<div class="yerel-sonuclar"><h4>${IKON.video}Diskindeki videolar</h4><div class="yatay">${d.video.map(vkart).join("")}</div></div>`;
     if (d.foto?.length) b += `<div class="yerel-sonuclar"><h4>${IKON.foto}Fotoğraflar</h4><div class="foto-izgara" id="aramaFoto">${d.foto.slice(0, 8).map(fotoKucuk).join("")}</div></div>`;
     if (d.muzik?.length) b += `<div class="yerel-sonuclar"><h4>${IKON.muzik}Müzik</h4><div class="parca-liste" id="aramaMuzik">${d.muzik.slice(0, 4).map(parcaSatir).join("")}</div></div>`;
@@ -618,6 +639,83 @@ async function sayfaBelgeler(_, q) {
     kap.insertAdjacentHTML("beforeend", l.map(belgeKart).join(""));
     belgeBagla(kap);
   });
+}
+
+/* ---------------- KLASÖRLER ---------------- */
+async function sayfaKlasorler(_, q) {
+  document.title = "Klasörlerim — Portal";
+  const o = await api("/api/klasor-ozet");
+  const sira = q.get("sira") || "ad";
+  const liste = [...o.klasorler];
+  if (sira === "yeni") liste.sort((a, b) => b.son - a.son);
+  if (sira === "buyuk") liste.sort((a, b) => b.toplam - a.toplam);
+  sayfa.innerHTML = `<div class="dar" style="max-width:1600px"><h1 class="sayfa-baslik">Klasörlerim</h1>
+    <p class="sayfa-alt">${o.klasorler.length} klasör · ${sayilarMetni(o.sayilar)}</p>
+    <div class="cipler"><input id="kFiltre" class="filtre-kutu" type="search" placeholder="Klasör ara…" autocomplete="off">
+      ${[["ad", "Ada göre"], ["yeni", "En yeni"], ["buyuk", "En dolu"]].map(([k, a]) => `<a class="cip ${k === sira ? "aktif" : ""}" href="#/klasorler?sira=${k}">${a}</a>`).join("")}</div>
+    ${liste.length ? `<div class="kizgara" id="kIzgara">${liste.map(klasorKart).join("")}</div>` : bosEkran(IKON.klasor, "Henüz klasör bulunamadı", "Tarama sürüyor olabilir; birkaç dakika sonra yenile.")}</div>`;
+  $("#kFiltre")?.addEventListener("input", (e) => {
+    const f = e.target.value.toLocaleLowerCase("tr-TR");
+    $$("#kIzgara .kkart").forEach((k) => (k.hidden = f && !$("h4", k).textContent.toLocaleLowerCase("tr-TR").includes(f)));
+  });
+}
+
+async function sayfaKlasor(_, q) {
+  const yol = q.get("yol") || "";
+  const sekme = q.get("t") || "hepsi";
+  const o = await api("/api/klasor-ozet?yol=" + encodeURIComponent(yol));
+  const ad = o.ad || "Disk";
+  document.title = ad + " — Portal";
+  const parca = yol.split("/").filter(Boolean);
+  let yc = `<a href="#/klasorler">Klasörlerim</a>`;
+  parca.forEach((p, i) => (yc += `<span style="color:var(--metin-3)">›</span><a href="${klasorHref(parca.slice(0, i + 1).join("/"))}">${esc(p)}</a>`));
+  const say = o.sayilar;
+  const turAd = { video: "Videolar", foto: "Fotoğraflar", muzik: "Müzik", belge: "Belgeler" };
+  const sekmeler = [["hepsi", "Tümü"]].concat(Object.keys(turAd).filter((t) => say[t]).map((t) => [t, `${turAd[t]} <span style="opacity:.55">${say[t]}</span>`]));
+  let h = `<div class="dar" style="max-width:1600px">
+    <div class="yol-cubugu" style="margin-bottom:4px">${yc}</div>
+    <div class="klasor-bas"><div class="klasor-ikon-buyuk" style="background:${renk(ad)}">${IKON.klasor}</div>
+      <div style="flex:1;min-width:0"><h1 class="sayfa-baslik" style="margin:0 0 2px">${esc(ad)}</h1><p class="sayfa-alt" style="margin:0">${sayilarMetni(say) || "Bu klasörde gösterilecek dosya yok"}</p></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">${say.foto ? `<button class="kucuk-btn vurgulu" id="kSlayt">${IKON.oynat}Slayt gösterisi</button>` : ""}
+      ${say.muzik ? `<button class="kucuk-btn" id="kCal">${IKON.muzik}Müzikleri çal</button>` : ""}
+      ${yol ? `<button class="kucuk-btn" id="kAc">${IKON.ac}Bilgisayarda aç</button>` : ""}</div></div>
+    ${o.klasorler.length ? `<h3 class="alt-baslik">Alt klasörler</h3><div class="kizgara kucuk">${o.klasorler.map(klasorKart).join("")}</div>` : ""}
+    ${sekmeler.length > 2 ? `<nav class="sonuc-sekmeler" style="margin-top:22px">${sekmeler.map(([k, a]) => `<a class="${k === sekme ? "aktif" : ""}" href="${klasorHref(yol, k)}">${a}</a>`).join("")}</nav>` : ""}
+    <div id="kIcerik"></div></div>`;
+  sayfa.innerHTML = h;
+  const kap = $("#kIcerik");
+  const k = encodeURIComponent(yol);
+  const fotolar = [];
+  $("#kAc")?.addEventListener("click", () => post("/api/ac", { yol }));
+  $("#kSlayt")?.addEventListener("click", async () => { const l = await api(`/api/medya?tur=foto&klasor=${k}&sira=eski&adet=500`); l.length && isikKutuAc(l, 0, true); });
+  $("#kCal")?.addEventListener("click", async () => { const l = await api(`/api/medya?tur=muzik&klasor=${k}&sira=ad&adet=500`); l.length && calarBaslat(l, 0); });
+  kap.addEventListener("click", (e) => { const a = e.target.closest(".foto-izgara [data-i]"); if (a) isikKutuAc(fotolar, +a.dataset.i); });
+
+  if (sekme === "hepsi") {
+    const [v, f, m, b] = await Promise.all(["video", "foto", "muzik", "belge"].map((t, i) => say[t] ? api(`/api/medya?tur=${t}&klasor=${k}&sira=${t === "foto" ? "eski" : "ad"}&adet=${[8, 30, 8, 8][i]}`) : []));
+    let c = "";
+    const bas = (t, adi) => `<div class="bolum-bas"><h2>${adi}</h2>${say[t] > [8, 30, 8, 8][["video", "foto", "muzik", "belge"].indexOf(t)] ? `<a href="${klasorHref(yol, t)}">Tümünü gör (${say[t]})</a>` : ""}</div>`;
+    if (v.length) c += `<section class="bolum">${bas("video", "Videolar")}<div class="izgara">${v.map(vkart).join("")}</div></section>`;
+    if (f.length) { fotolar.push(...f); c += `<section class="bolum">${bas("foto", "Fotoğraflar")}<div class="foto-izgara">${f.map(fotoKucuk).join("")}</div></section>`; }
+    if (m.length) c += `<section class="bolum">${bas("muzik", "Müzik")}<div class="parca-liste" id="kMuzik">${m.map(parcaSatir).join("")}</div></section>`;
+    if (b.length) c += `<section class="bolum">${bas("belge", "Belgeler")}<div class="belge-izgara">${b.map(belgeKart).join("")}</div></section>`;
+    kap.innerHTML = c || (o.klasorler.length ? "" : bosEkran(IKON.klasor, "Bu klasör boş", "Burada video, fotoğraf, müzik ya da belge bulunamadı. <a href='#/dosyalar?yol=" + encodeURIComponent(yol) + "' style='color:var(--vurgu)'>Tüm dosyaları göster</a>"));
+    muzikListeBagla($("#kMuzik"), m);
+    belgeBagla(kap);
+    return;
+  }
+  // tek tür: sonsuz liste
+  const sablon = { video: ["izgara", vkart], foto: ["foto-izgara", null], muzik: ["parca-liste", parcaSatir], belge: ["belge-izgara", belgeKart] }[sekme];
+  kap.innerHTML = `<div class="${sablon[0]}" id="kListe" style="margin-top:8px"></div>`;
+  const liste = $("#kListe");
+  const muzikler = [];
+  if (sekme === "muzik") liste.addEventListener("click", (e) => { const p = e.target.closest(".parca"); if (p) calarBaslat(muzikler, +p.dataset.i); });
+  await sonsuzListe(liste, (b, a) => api(`/api/medya?tur=${sekme}&klasor=${k}&sira=${sekme === "foto" ? "eski" : "ad"}&bas=${b}&adet=${a}`), (l) => {
+    if (sekme === "foto") { liste.insertAdjacentHTML("beforeend", l.map((m) => fotoKucuk(m, fotolar.push(m) - 1)).join("")); return; }
+    if (sekme === "muzik") { liste.insertAdjacentHTML("beforeend", l.map((m) => parcaSatir(m, muzikler.push(m) - 1)).join("")); calarIsaretle(); return; }
+    liste.insertAdjacentHTML("beforeend", l.map(sablon[1]).join(""));
+    if (sekme === "belge") belgeBagla(liste);
+  }, sekme === "foto" ? 120 : 60);
 }
 
 /* ---------------- VİKİPEDİ ---------------- */

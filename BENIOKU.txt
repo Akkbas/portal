@@ -51,6 +51,8 @@ normal şekilde çıkar. (Portal açıkken Windows "disk kullanımda" diyebilir.
 - Fotoğraflar: tarihe göre zaman çizelgesi, albümler, slayt gösterisi.
 - Müzik: albüm kapaklarıyla liste, sayfalar arasında çalmaya devam eden çalar.
 - Belgeler: PDF ve metinler tarayıcıda açılır; Word/Excel bilgisayardaki programla.
+- Klasörlerim: diskteki tüm klasörlerin kapak resimleriyle; içine girince videolar,
+  fotoğraflar, müzik ve belgeler bir arada.
 - Tüm dosyalar: diskin tamamını gezebileceğin salt okunur dosya gezgini.
 
 AYARLAR (Portal\ayarlar.json)
@@ -59,7 +61,7 @@ AYARLAR (Portal\ayarlar.json)
 - "agda_paylas": true         -> Aynı Wi-Fi'deki telefon/tabletlerden http://BILGISAYAR-IP:8765
                                  ile girilebilir (varsayılan: kapalı, sadece bu bilgisayar).
 - "klasorler"                 -> Kategori klasörlerinin adları.
-- "tum_diski_tara": true      -> Klasör adına bakmadan tüm diski türüne göre tarar.
+- "sadece_kategori_klasorleri": true -> Tüm disk yerine sadece Videolar/Fotoğraflar/Müzik/Belgeler taranır.
 
 OTOMATİK AÇILMAYI KALDIRMAK
 ---------------------------

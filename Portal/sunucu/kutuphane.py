@@ -21,7 +21,7 @@ UZANTILAR = {
               ".odp", ".rtf", ".csv", ".epub", ".html", ".htm", ".json", ".xml"},
 }
 TARAYICI_VIDEO = {".mp4", ".m4v", ".webm", ".mov", ".ogv"}
-ATLA = {"portal", "system volume information", "$recycle.bin", "recycler", ".trash", ".trashes",
+ATLA = {"portal", "windowsapps", "msocache", "$windows.~ws", "$sysreset", "system volume information", "$recycle.bin", "recycler", ".trash", ".trashes",
         ".spotlight-v100", ".fseventsd", "found.000", "$windows.~bt"}
 
 KUCUK_GENISLIK = 480
@@ -36,6 +36,10 @@ def tur_bul(ad):
 
 
 _KATLA = str.maketrans("ıİşŞğĞüÜöÖçÇâÂîÎûÛ", "iisSgGuUoOcCaAiIuU")
+
+
+def like_kacis(metin):
+    return metin.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 def katla(metin):
@@ -156,6 +160,10 @@ class Kutuphane:
             raise PermissionError("Disk dışına erişim engellendi")
         return tam
 
+    def _klasor(self, tam):
+        g = self.goreli(tam)
+        return "" if g == "." else g
+
     def goreli(self, tam):
         return os.path.relpath(tam, self.kok).replace("\\", "/")
 
@@ -192,7 +200,9 @@ class Kutuphane:
         gorulen = set()
         simdi = time.time()
         hedefler = []
-        if self.ayarlar.get("tum_diski_tara"):
+        # Varsayılan: diskin tamamı taranır, dosyalar türüne göre ayrılır.
+        # İstenirse sadece kategori klasörleri (Videolar, Fotoğraflar...) taranabilir.
+        if not self.ayarlar.get("sadece_kategori_klasorleri"):
             hedefler.append((None, self.kok))
         else:
             for tur in UZANTILAR:
@@ -226,7 +236,7 @@ class Kutuphane:
                         continue
                     kayit = {
                         "yol": g, "tur": tur, "ad": guzel_ad(ad),
-                        "klasor": self.goreli(kok), "uzanti": os.path.splitext(ad)[1].lower(),
+                        "klasor": self._klasor(kok), "uzanti": os.path.splitext(ad)[1].lower(),
                         "boyut": st.st_size, "mtime": st.st_mtime, "tarih": st.st_mtime,
                         "eklenme": simdi,
                     }
@@ -323,8 +333,8 @@ class Kutuphane:
         sql = "SELECT m.*, i.konum, i.sure AS izleme_sure FROM medya m LEFT JOIN izleme i ON i.id=m.id WHERE m.tur=?"
         p = [tur]
         if klasor:
-            sql += " AND (m.klasor=? OR m.klasor LIKE ?)"
-            p += [klasor, klasor + "/%"]
+            sql += " AND (m.klasor=? OR m.klasor LIKE ? ESCAPE '\\')"
+            p += [klasor, like_kacis(klasor) + "/%"]
         if ara:
             sql += " AND (katla(m.ad) LIKE ? OR katla(m.baslik) LIKE ? OR katla(m.sanatci) LIKE ? OR katla(m.album) LIKE ?)"
             a = "%" + katla(ara) + "%"
@@ -348,6 +358,43 @@ class Kutuphane:
         sql = """SELECT klasor, COUNT(*) adet, MIN(id) kapak, MAX(tarih) son FROM medya WHERE tur=?
                  GROUP BY klasor ORDER BY son DESC"""
         return [dict(r) for r in self.db().execute(sql, (tur,))]
+
+    def klasor_ozet(self, yol=""):
+        """Bir klasörün (yol="" ise diskin kökü) alt klasörlerini, her birindeki
+        video/fotoğraf/müzik/belge sayılarını ve kapak resmini döndürür."""
+        yol = (yol or "").strip("/")
+        c = self.db()
+        if yol:
+            satirlar = c.execute(
+                "SELECT klasor, tur, COUNT(*) n, MAX(id) son_id, MAX(tarih) son FROM medya "
+                "WHERE klasor=? OR klasor LIKE ? ESCAPE '\\' GROUP BY klasor, tur",
+                (yol, like_kacis(yol) + "/%")).fetchall()
+        else:
+            satirlar = c.execute(
+                "SELECT klasor, tur, COUNT(*) n, MAX(id) son_id, MAX(tarih) son FROM medya GROUP BY klasor, tur").fetchall()
+        onek = yol + "/" if yol else ""
+        cocuklar, toplam, burada = {}, {}, {}
+        for r in satirlar:
+            k = r["klasor"] or ""
+            toplam[r["tur"]] = toplam.get(r["tur"], 0) + r["n"]
+            if k == yol:
+                burada[r["tur"]] = burada.get(r["tur"], 0) + r["n"]
+                continue
+            ad = k[len(onek):].split("/")[0]
+            if not ad:
+                continue
+            o = cocuklar.setdefault(ad, {"ad": ad, "yol": onek + ad, "sayilar": {}, "kapak": {}, "son": 0})
+            o["sayilar"][r["tur"]] = o["sayilar"].get(r["tur"], 0) + r["n"]
+            o["kapak"][r["tur"]] = max(o["kapak"].get(r["tur"], 0), r["son_id"])
+            o["son"] = max(o["son"], r["son"] or 0)
+        liste = []
+        for o in cocuklar.values():
+            o["kapak"] = o["kapak"].get("foto") or o["kapak"].get("video") or o["kapak"].get("muzik") or o["kapak"].get("belge")
+            o["toplam"] = sum(o["sayilar"].values())
+            liste.append(o)
+        liste.sort(key=lambda o: katla(o["ad"]))
+        return {"yol": yol, "ad": yol.split("/")[-1] if yol else "", "sayilar": toplam,
+                "burada": burada, "klasorler": liste}
 
     def oneriler(self, mid, adet=20):
         m = self.al(mid)

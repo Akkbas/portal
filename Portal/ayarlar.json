@@ -4,7 +4,7 @@
   "tarayiciyi_ac": true,
   "uygulama_penceresi": false,
   "agda_paylas": false,
-  "tum_diski_tara": false,
+  "sadece_kategori_klasorleri": false,
   "klasorler": {
     "video": [
       "Videolar",

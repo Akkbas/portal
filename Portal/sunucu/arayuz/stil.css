@@ -356,3 +356,27 @@ body.calar-acik .bildirim { bottom: 100px; }
   .kv { grid-template-columns: 1fr; }
 }
 .parca .kapakcik { position: relative; }
+
+/* ---------- klasör kartları ---------- */
+.kizgara { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 22px 16px; }
+.kizgara.kucuk { grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px 12px; }
+.kkart { display: block; min-width: 0; }
+.kkart[hidden] { display: none; }
+.yatay .kkart { width: 200px; }
+.kkart .kapak { position: relative; aspect-ratio: 4/3; border-radius: var(--yari); overflow: hidden; background: color-mix(in srgb, var(--k) 22%, var(--yuzey-2)); }
+.kkart .kapak .yer-tutucu { position: absolute; inset: 0; display: grid; place-items: center; color: var(--k); }
+.kkart .kapak .yer-tutucu svg { width: 46px; height: 46px; stroke-width: 1.4; }
+.kkart .kapak img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transition: transform .35s ease; }
+.kkart:hover .kapak img { transform: scale(1.05); }
+.kkart .kapak::after { content: ""; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); pointer-events: none; }
+.kkart-ust { position: absolute; left: 8px; bottom: 8px; display: flex; gap: 4px; flex-wrap: wrap; }
+.kkart-ust span { display: inline-flex; align-items: center; gap: 4px; background: rgba(0,0,0,.62); color: #fff; font-size: 11.5px; font-weight: 650; padding: 3px 7px; border-radius: 6px; backdrop-filter: blur(4px); }
+.kkart-ust svg { width: 13px; height: 13px; }
+.kkart h4 { margin: 9px 0 1px; font-size: 14.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kkart > span { font-size: 12.5px; color: var(--metin-2); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.klasor-bas { display: flex; align-items: center; gap: 18px; margin: 10px 0 8px; flex-wrap: wrap; }
+.klasor-ikon-buyuk { width: 64px; height: 64px; border-radius: 18px; display: grid; place-items: center; color: #fff; flex: none; }
+.klasor-ikon-buyuk svg { width: 32px; height: 32px; color: #fff; }
+.alt-baslik { font-size: 15px; color: var(--metin-2); font-weight: 600; margin: 26px 0 12px; }
+.filtre-kutu { height: 34px; border-radius: 10px; border: 1px solid var(--cizgi); background: var(--yuzey); color: var(--metin); padding: 0 12px; font: inherit; font-size: 14px; outline: none; min-width: 200px; }
+.filtre-kutu:focus { border-color: var(--vurgu); }

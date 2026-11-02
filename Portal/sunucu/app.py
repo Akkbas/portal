@@ -37,7 +37,7 @@ VARSAYILAN_AYARLAR = {
     "agda_paylas": False,
     "tarayiciyi_ac": True,
     "uygulama_penceresi": False,
-    "tum_diski_tara": False,
+    "sadece_kategori_klasorleri": False,
     "klasorler": {
         "video": ["Videolar", "Video", "Videos", "Filmler", "Diziler", "Belgeseller"],
         "foto": ["Fotoğraflar", "Fotograflar", "Fotolar", "Resimler", "Photos", "Pictures"],
@@ -172,6 +172,11 @@ def medya_tek(mid):
 @app.route("/api/klasorler")
 def klasorler():
     return jsonify(kutup.klasorler(request.args.get("tur", "video")))
+
+
+@app.route("/api/klasor-ozet")
+def klasor_ozet():
+    return jsonify(kutup.klasor_ozet(request.args.get("yol", "")))
 
 
 @app.route("/api/oneriler/<int:mid>")
@@ -367,6 +372,10 @@ def ara():
     t0 = time.time()
     v = viki.ara(q, bas, 10) if viki.var_mi() else {"toplam": 0, "sonuclar": []}
     d = kutup.ara(q) if bas == 0 else {}
+    if bas == 0:
+        from kutuphane import katla
+        kq = katla(q)
+        d["klasorler"] = [k for k in kutup.klasor_ozet("")["klasorler"] if kq in katla(k["ad"])][:12]
     return jsonify({"q": q, "vikipedi": v, "dosyalar": d, "sure": round(time.time() - t0, 2)})
 
 

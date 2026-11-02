@@ -49,11 +49,10 @@ E:\
 ├── Portali Ac.bat          ← çift tıkla, Portal açılsın
 ├── BENIOKU.txt
 ├── Portal\                 ← program (dokunmana gerek yok)
-├── Videolar\               ← videoların (alt klasörler: Filmler, Diziler…)
-├── Fotoğraflar\            ← fotoğrafların (her alt klasör bir albüm)
-├── Müzik\
-├── Belgeler\               ← PDF, Word, Excel, txt…
-└── Vikipedi\               ← wikipedia_tr_all_maxi_….zim buraya
+├── Vikipedi\               ← wikipedia_tr_all_maxi_….zim buraya
+├── ZARA DOĞUM\             ← kendi klasörlerin olduğu gibi kalır;
+├── KÖY BAYRAMLAR\             Portal hepsini tarar ve türüne göre ayırır
+└── …
 ```
 
 **2. Vikipedi dosyasını edin** *(isteğe bağlı)*
@@ -76,6 +75,7 @@ E:\
 
 | | |
 |---|---|
+| 📁 **Klasörlerim** | Diskin tamamı taranır; dosyaların hangi klasörde olursa olsun bulunur. Ana sayfada klasörlerin kapak resimleriyle listelenir; bir klasöre girince içindeki videolar, fotoğraflar, müzikler ve belgeler bir arada açılır. |
 | 🔎 **Birleşik arama** | Vikipedi'de tam metin arama + diskindeki dosyalarda arama. Google benzeri sonuç sayfası, bilgi paneli, sayfalama ve yazarken öneriler. Türkçe karakter duyarsız: `kurulus` yazınca `Kuruluş` bulunur. |
 | 📖 **Blog gibi Vikipedi** | Makaleler okunaklı bir dergi düzeninde: kapak görseli, içindekiler, bilgi kutusu, "ilgili okumalar". Günlük keşfet kartları ve rastgele makale. |
 | 🎬 **YouTube gibi videolar** | Önerilen videolar, kaldığın yerden devam, otomatik sıradaki video, klasör "kanalları", `.srt` altyazı. MKV / AVI / WMV anlık dönüştürülerek oynatılır. |
@@ -121,7 +121,7 @@ E:\
 | `"uygulama_penceresi": true` | Edge'de adres çubuğu olmayan, uygulama gibi bir pencerede açılır. |
 | `"agda_paylas": true` | Aynı Wi-Fi'deki telefon/tabletlerden `http://BILGISAYAR-IP:8765` ile erişim. |
 | `"klasorler"` | Kategori klasörlerinin adları (ör. `"video": ["Videolar", "Filmler"]`). |
-| `"tum_diski_tara": true` | Klasör adına bakmadan tüm diski dosya türüne göre tarar. |
+| `"sadece_kategori_klasorleri": true` | Tüm disk yerine yalnızca Videolar, Fotoğraflar, Müzik, Belgeler klasörlerini tarar. |
 | `"port"` | Varsayılan `8765`. |
 | `"ad"` | Sol üstte görünen isim. |
 
