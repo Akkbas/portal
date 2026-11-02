@@ -288,6 +288,19 @@ class ZimDosyasi:
             else:
                 a["href"] = (self.zim_url(hedef) or "") + capa
                 a["target"] = "_blank"
+        # Vikipedi'nin sabit genişlik / kaydırma (float) ayarlarını temizle:
+        # bunlar okuma sütununu daraltıyordu. Renk vb. diğer stiller korunur.
+        yasak = re.compile(r"^\s*(float|clear|width|min-width|max-width|margin[a-z-]*|position|left|right|top)\s*:", re.I)
+        for el in govde.find_all(style=True):
+            temiz = [d for d in el["style"].split(";") if d.strip() and not yasak.match(d)]
+            if temiz:
+                el["style"] = ";".join(temiz)
+            else:
+                del el["style"]
+        for el in govde.find_all(attrs={"align": True}):
+            del el["align"]
+        for el in govde.find_all(["table", "div", "td", "th"], attrs={"width": True}):
+            del el["width"]
         # bölüm başlıkları (içindekiler için)
         icindekiler = []
         for i, h in enumerate(govde.find_all(["h2", "h3"])):

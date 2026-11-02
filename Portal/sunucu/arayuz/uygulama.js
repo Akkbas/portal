@@ -663,7 +663,7 @@ async function makaleGoster(z, yol) {
       <h1>${esc(m.baslik)}</h1>
       <div class="yazar"><span class="fav">W</span><div><b>Vikipedi, özgür ansiklopedi</b>${m.okuma_dk} dakikalık okuma · çevrimdışı kopya</div>
         <div class="eylemler"><button class="kucuk-btn" id="mRastgele">${IKON.zar}Rastgele</button></div></div></header>
-    ${m.resim ? `<figure class="kapak-gorsel" style="max-width:760px"><img src="${esc(m.resim)}" alt="" onerror="this.parentNode.remove()"></figure>` : ""}
+    ${m.resim ? `<figure class="kapak-gorsel"><img src="${esc(m.resim)}" alt="" onerror="this.parentNode.remove()"></figure>` : ""}
     <div class="yazi" id="yazi">${m.html}</div>
     <div class="makale-son" id="makaleSon"></div>
   </article>
