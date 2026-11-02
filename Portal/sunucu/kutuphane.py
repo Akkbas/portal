@@ -73,12 +73,51 @@ class Kutuphane:
             c = sqlite3.connect(self.db_yol, timeout=30, check_same_thread=False)
             c.row_factory = sqlite3.Row
             c.create_function("katla", 1, katla, deterministic=True)
-            c.execute("PRAGMA journal_mode=WAL")
+            # Harici disk aniden çıkarılabileceği için WAL yerine klasik günlük + tam senkron
+            c.execute("PRAGMA journal_mode=DELETE")
+            c.execute("PRAGMA synchronous=FULL")
             self.yerel.c = c
         return c
 
+    def _bozuk_db_kurtar(self):
+        """İndeks dosyası bozulduysa (ör. disk yazarken çıkarıldıysa) kenara alıp yenisini oluşturur.
+        Bu dosya yalnızca Portal'ın kendi indeksidir; kullanıcı dosyalarıyla ilgisi yoktur."""
+        c = getattr(self.yerel, "c", None)
+        if c is not None:
+            try:
+                c.close()
+            except Exception:
+                pass
+            self.yerel.c = None
+        ek = time.strftime("%Y%m%d-%H%M%S")
+        for uz in ("", "-wal", "-shm", "-journal"):
+            y = self.db_yol + uz
+            if os.path.exists(y):
+                try:
+                    os.replace(y, y + ".bozuk-" + ek)
+                except OSError:
+                    try:
+                        os.remove(y)
+                    except OSError:
+                        pass
+        # bozuk indeksle birlikte küçük resim önbelleğinin numaraları da geçersizdir
+        try:
+            for ad in os.listdir(self.kucuk_dizin):
+                os.remove(os.path.join(self.kucuk_dizin, ad))
+        except OSError:
+            pass
+        print("Uyarı: indeks dosyası bozuktu, yeniden oluşturuldu.")
+
     def _sema(self):
-        c = self.db()
+        try:
+            c = self.db()
+            c.execute("PRAGMA quick_check").fetchone()
+            self._tablolar(c)
+        except sqlite3.DatabaseError:
+            self._bozuk_db_kurtar()
+            self._tablolar(self.db())
+
+    def _tablolar(self, c):
         c.executescript("""
         CREATE TABLE IF NOT EXISTS medya(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
