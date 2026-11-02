@@ -1,0 +1,46 @@
+{
+  "ad": "Portal",
+  "port": 8765,
+  "tarayiciyi_ac": true,
+  "uygulama_penceresi": false,
+  "agda_paylas": false,
+  "tum_diski_tara": false,
+  "klasorler": {
+    "video": [
+      "Videolar",
+      "Video",
+      "Videos",
+      "Filmler",
+      "Diziler",
+      "Belgeseller"
+    ],
+    "foto": [
+      "Fotoğraflar",
+      "Fotograflar",
+      "Fotolar",
+      "Resimler",
+      "Photos",
+      "Pictures"
+    ],
+    "muzik": [
+      "Müzik",
+      "Muzik",
+      "Müzikler",
+      "Muzikler",
+      "Music"
+    ],
+    "belge": [
+      "Belgeler",
+      "Dokümanlar",
+      "Dokumanlar",
+      "Documents",
+      "Kitaplar"
+    ]
+  },
+  "vikipedi_klasorleri": [
+    "Vikipedi",
+    "Wikipedia",
+    "Kiwix",
+    "ZIM"
+  ]
+}

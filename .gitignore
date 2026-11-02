@@ -1,0 +1,16 @@
+# Portal'ın kendi ürettiği dosyalar
+Portal/veri/
+Portal/python/
+Portal/kutuphaneler/
+__pycache__/
+*.pyc
+
+# Kişisel içerik asla depoya girmesin
+Videolar/
+Fotoğraflar/
+Fotograflar/
+Müzik/
+Muzik/
+Belgeler/
+Vikipedi/
+*.zim

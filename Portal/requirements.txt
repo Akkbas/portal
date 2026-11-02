@@ -1,0 +1,8 @@
+flask>=3.0
+waitress>=3.0
+libzim>=3.4
+pillow>=10.0
+beautifulsoup4>=4.12
+mutagen>=1.47
+pypdfium2>=4.0
+imageio-ffmpeg>=0.5

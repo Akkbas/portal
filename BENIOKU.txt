@@ -1,0 +1,70 @@
+PORTAL — Harici diskin için çevrimdışı "internet"
+==================================================
+
+Portal, harici diskindeki Vikipedi'yi, videolarını, fotoğraflarını, müziklerini
+ve belgelerini tarayıcıda internet sitesi gibi gezmeni sağlar. İnternet gerekmez.
+
+VERİLERİN GÜVENDE
+-----------------
+Portal diskindeki dosyaları SADECE OKUR. Hiçbir dosyayı değiştirmez, taşımaz, silmez.
+Yalnızca "Portal\veri" klasörüne küçük resim ve indeks yazar. Bu klasörü silsen bile
+dosyaların etkilenmez (Portal bir sonraki açılışta yeniden oluşturur).
+
+KURULUM (bir kez, internet varken)
+----------------------------------
+1. Bu klasördeki her şeyi diskinin KÖKÜNE kopyala. Şöyle görünmeli:
+
+     E:\
+       Portali Ac.bat
+       BENIOKU.txt
+       Portal\            <- program
+       Videolar\          <- videoların (alt klasörler olabilir: Filmler, Diziler...)
+       Fotoğraflar\       <- fotoğrafların (her alt klasör bir albüm olur)
+       Müzik\             <- müziklerin
+       Belgeler\          <- PDF, Word, Excel, txt...
+       Vikipedi\          <- wikipedia_tr_all_maxi_2026-09.zim buraya
+
+2. "Portal\Kurulum.bat" dosyasına çift tıkla.
+   - Taşınabilir Python ve kütüphaneleri DİSKİN İÇİNE indirir (~180 MB, bir kez).
+   - Bilgisayara program kurmaz.
+   - Sonunda "otomatik açılsın mı?" diye sorar -> E de.
+
+KULLANIM
+--------
+- Otomatik açılma kuruluysa: diski tak -> birkaç saniye içinde tarayıcıda Portal açılır.
+- Başka bir bilgisayarda: diskteki "Portali Ac.bat" dosyasına çift tıkla.
+  (Kurulum diskte olduğu için orada tekrar internet gerekmez.)
+- Adres: http://localhost:8765
+
+DİSKİ ÇIKARMADAN ÖNCE
+---------------------
+Sağ üstteki "Güvenle çıkar" düğmesine bas. Portal kapanır, sonra Windows'tan diski
+normal şekilde çıkar. (Portal açıkken Windows "disk kullanımda" diyebilir.)
+
+ÖZELLİKLER
+----------
+- Arama: Vikipedi'de tam metin arama + diskindeki dosyalarda ad araması, Google benzeri
+  sonuç sayfası. Türkçe karakter yazmasan da bulur (kurulus -> Kuruluş).
+- Vikipedi makaleleri blog yazısı düzeninde, içindekiler ve ilgili okumalarla.
+- Videolar: YouTube benzeri; kaldığın yerden devam, sıradaki video, .srt altyazı.
+  MKV/AVI/WMV gibi formatlar anlık dönüştürülerek oynatılır.
+- Fotoğraflar: tarihe göre zaman çizelgesi, albümler, slayt gösterisi.
+- Müzik: albüm kapaklarıyla liste, sayfalar arasında çalmaya devam eden çalar.
+- Belgeler: PDF ve metinler tarayıcıda açılır; Word/Excel bilgisayardaki programla.
+- Tüm dosyalar: diskin tamamını gezebileceğin salt okunur dosya gezgini.
+
+AYARLAR (Portal\ayarlar.json)
+-----------------------------
+- "uygulama_penceresi": true  -> Edge'de adres çubuğu olmayan uygulama penceresi gibi açılır.
+- "agda_paylas": true         -> Aynı Wi-Fi'deki telefon/tabletlerden http://BILGISAYAR-IP:8765
+                                 ile girilebilir (varsayılan: kapalı, sadece bu bilgisayar).
+- "klasorler"                 -> Kategori klasörlerinin adları.
+- "tum_diski_tara": true      -> Klasör adına bakmadan tüm diski türüne göre tarar.
+
+OTOMATİK AÇILMAYI KALDIRMAK
+---------------------------
+"Portal\Otomatik Acilmayi Kaldir.bat" dosyasına çift tıkla.
+
+SORUN ÇIKARSA
+-------------
+Hata kayıtları: Portal\veri\gunluk.txt

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portal</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%23e8590c'/%3E%3Ccircle cx='16' cy='16' r='7' fill='none' stroke='white' stroke-width='3'/%3E%3Ccircle cx='16' cy='16' r='2.5' fill='white'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/arayuz/stil.css">
+<link rel="stylesheet" href="/arayuz/makale.css">
+</head>
+<body>
+<header class="ust">
+  <button class="ikon-btn" id="menuBtn" aria-label="Menü"><svg viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
+  <a class="logo" href="#/" aria-label="Ana sayfa">
+    <span class="logo-isaret"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="7"/><circle cx="16" cy="16" r="2.5" class="dolu"/></svg></span>
+    <span class="logo-yazi" id="logoYazi">Portal</span>
+  </a>
+  <form class="arama" id="aramaForm" autocomplete="off" role="search">
+    <svg class="arama-ikon" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>
+    <input id="aramaKutu" type="search" placeholder="Vikipedi'de ve diskinde ara…" aria-label="Ara">
+    <ul class="oneri-liste" id="oneriListe" hidden></ul>
+  </form>
+  <div class="ust-sag">
+    <button class="ikon-btn" id="temaBtn" title="Açık / koyu tema" aria-label="Tema"><svg viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
+    <button class="cikar-btn" id="cikarBtn" title="Portal'ı kapat ve diski güvenle çıkar"><svg viewBox="0 0 24 24"><path d="M12 4 4 13h16z"/><path d="M4 18h16"/></svg><span>Güvenle çıkar</span></button>
+  </div>
+</header>
+
+<nav class="yan" id="yan">
+  <a href="#/" data-sayfa="ana"><svg viewBox="0 0 24 24"><path d="M3 11 12 4l9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg><span>Ana sayfa</span></a>
+  <a href="#/wiki" data-sayfa="wiki"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18"/></svg><span>Vikipedi</span></a>
+  <div class="yan-ayrac"></div>
+  <a href="#/videolar" data-sayfa="videolar"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z" class="dolu"/></svg><span>Videolar</span></a>
+  <a href="#/fotograflar" data-sayfa="fotograflar"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg><span>Fotoğraflar</span></a>
+  <a href="#/muzik" data-sayfa="muzik"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg><span>Müzik</span></a>
+  <a href="#/belgeler" data-sayfa="belgeler"><svg viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></svg><span>Belgeler</span></a>
+  <a href="#/dosyalar" data-sayfa="dosyalar"><svg viewBox="0 0 24 24"><path d="M3 6a1 1 0 0 1 1-1h5l2 2h9a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/></svg><span>Tüm dosyalar</span></a>
+  <div class="yan-ayrac"></div>
+  <a href="#/ayarlar" data-sayfa="ayarlar"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Disk ve ayarlar</span></a>
+  <div class="yan-alt" id="yanAlt"></div>
+</nav>
+
+<main id="sayfa" tabindex="-1"></main>
+
+<div class="calar" id="calar" hidden>
+  <img class="calar-kapak" id="calarKapak" alt="">
+  <div class="calar-bilgi"><div class="calar-baslik" id="calarBaslik"></div><div class="calar-alt" id="calarAlt"></div></div>
+  <div class="calar-kontrol">
+    <button class="ikon-btn" id="calarOnceki" aria-label="Önceki"><svg viewBox="0 0 24 24"><path d="M6 5v14M19 5 9 12l10 7z" class="dolu"/></svg></button>
+    <button class="ikon-btn buyuk" id="calarOynat" aria-label="Oynat"><svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" class="dolu"/></svg></button>
+    <button class="ikon-btn" id="calarSonraki" aria-label="Sonraki"><svg viewBox="0 0 24 24"><path d="M18 5v14M5 5l10 7-10 7z" class="dolu"/></svg></button>
+  </div>
+  <div class="calar-cubuk"><span id="calarZaman">0:00</span><input type="range" id="calarKonum" min="0" max="1000" value="0"><span id="calarToplam">0:00</span></div>
+  <button class="ikon-btn" id="calarKapat" aria-label="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  <audio id="ses" preload="auto"></audio>
+</div>
+
+<div class="isik-kutu" id="isikKutu" hidden>
+  <button class="ik-kapat ikon-btn" aria-label="Kapat"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+  <button class="ik-onceki ikon-btn" aria-label="Önceki"><svg viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+  <img id="ikResim" alt="">
+  <button class="ik-sonraki ikon-btn" aria-label="Sonraki"><svg viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></button>
+  <div class="ik-alt"><span id="ikBilgi"></span><span class="ik-araclar"><button id="ikSlayt" class="kucuk-btn">Slayt gösterisi</button><button id="ikKlasor" class="kucuk-btn">Klasörde göster</button></span></div>
+</div>
+
+<div class="bildirim" id="bildirim" hidden></div>
+<script src="/arayuz/uygulama.js"></script>
+</body>
+</html>
