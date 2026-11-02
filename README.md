@@ -64,6 +64,8 @@ E:\
 
 `Portal\Kurulum.bat` dosyasına çift tıkla. Taşınabilir Python'u ve kütüphaneleri **diskin içine** indirir (~180 MB). Sonunda *"Disk takılınca otomatik açılsın mı?"* diye sorar.
 
+<p align="center"><img src="docs/ekranlar/kurulum.png" alt="Portal kurulum ekranı" width="90%"><br><sub>Kurulum birkaç dakika sürer. Vikipedi dosyasını bulur, eksik klasörleri oluşturur, bileşenleri test eder.</sub></p>
+
 **4. Kullan**
 
 - Otomatik açılmayı kurduysan: **diski tak → Portal açılır.**
