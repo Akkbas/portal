@@ -86,18 +86,58 @@ def tarayici_ac():
     webbrowser.open(ADRES)
 
 
-def zaten_calisiyor():
+def kod_imzasi():
+    """Sunucu dosyalarının imzası: dosyalar güncellendiyse değişir."""
+    import hashlib
+    h = hashlib.sha1()
+    for ad in sorted(os.listdir(BURASI)):
+        if ad.endswith(".py"):
+            st = os.stat(os.path.join(BURASI, ad))
+            h.update(("%s:%d:%d;" % (ad, st.st_size, int(st.st_mtime))).encode())
+    return h.hexdigest()[:12]
+
+
+IMZA = kod_imzasi()
+
+
+def calisan_portal():
+    """Bu portta çalışan bir Portal varsa onun yanıtını döndürür, yoksa None."""
     try:
         with urllib.request.urlopen(ADRES + "api/merhaba", timeout=1.5) as r:
-            return b"portal" in r.read()
+            metin = r.read().decode("utf-8", "ignore")
+            return metin if metin.startswith("portal") else None
     except Exception:
-        return False
+        return None
 
 
-if __name__ == "__main__" and zaten_calisiyor():
-    # Portal zaten açık: sadece tarayıcıyı göster
-    tarayici_ac()
-    sys.exit(0)
+def eskiyi_kapat():
+    """Güncellemeden önce açık kalmış eski Portal'ı kapatır ki yeni kod çalışsın."""
+    try:
+        req = urllib.request.Request(ADRES + "api/kapat", data=b"{}", method="POST",
+                                     headers={"Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=3).read()
+    except Exception:
+        pass
+    for _ in range(40):
+        if calisan_portal() is None:
+            try:
+                with socket.create_connection(("127.0.0.1", PORT), timeout=0.3):
+                    pass
+            except OSError:
+                return True
+        time.sleep(0.25)
+    return False
+
+
+if __name__ == "__main__":
+    yanit = calisan_portal()
+    if yanit == "portal " + IMZA:
+        # aynı sürüm zaten açık: sadece tarayıcıyı göster
+        tarayici_ac()
+        sys.exit(0)
+    if yanit is not None:
+        print("Eski Portal sürümü açık; kapatılıp yenisi başlatılıyor.")
+        eskiyi_kapat()
 
 from flask import Flask, jsonify, request, send_file, send_from_directory, Response, abort
 from kutuphane import Kutuphane, UZANTILAR
@@ -145,7 +185,7 @@ def arayuz(ad):
 
 @app.route("/api/merhaba")
 def merhaba():
-    return "portal"
+    return "portal " + IMZA
 
 
 @app.route("/api/durum")
