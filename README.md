@@ -82,6 +82,7 @@ E:\
 | 🖼️ **Fotoğraflar** | Çekim tarihine göre zaman çizelgesi, klasör albümleri, tam ekran görüntüleyici ve slayt gösterisi. |
 | 🎵 **Müzik** | Albüm kapakları ve etiketlerle liste; sayfalar arasında çalmaya devam eden alt çalar, karışık çalma. |
 | 📄 **Belgeler** | PDF önizleme kapakları; PDF ve metin dosyaları tarayıcıda açılır, Word/Excel bilgisayardaki programla. |
+| 🏷️ **Etiketler** | Videolara ve fotoğraflara kendi etiketlerini ekle (ör. *Zara*, *Doğum günü*); birden fazla etiket seçilebilir. Aramada etiket adını yazınca o dosyalar gelir. Etiket sayfasında birkaç etiketle birlikte filtrele; etiketleri yeniden adlandır ya da sil. |
 | ✏️ **Ad ver, sil** | Video, fotoğraf, şarkı ve belgelerin adını kalem simgesiyle ya da çift tıklayarak değiştir; aramada bu adla bulursun (dosya adı değişmez). Çöp kutusu simgesiyle sil; çöp kutusundan geri al. |
 | 🗂️ **Tüm dosyalar** | Diskin tamamı için salt okunur dosya gezgini. |
 | 🔌 **Tak-çalıştır** | Disk takılınca otomatik açılır. "Güvenle çıkar" düğmesiyle kapanır. |
@@ -110,6 +111,7 @@ E:\
 
 - Kendiliğinden hiçbir dosyayı değiştirmez, taşımaz ya da silmez.
 - **Ad değiştirme** (✏️) dosyanın kendisini yeniden adlandırmaz. Verdiğin ad yalnızca Portal'da görünür ve aramada bulunur; `Portal\veri\adlar.json` dosyasında saklanır.
+- **Etiketler** (🏷️) dosyalara yazılmaz; `Portal\veri\etiketler.json` dosyasında saklanır.
 - **Sil** (🗑️) dosyayı hemen yok etmez, aynı diskteki `Portal\Cop` klasörüne taşır. **Çöp kutusu** sayfasından geri alabilirsin. Kalıcı silme yalnızca "Çöp kutusunu boşalt" ile ve onayınla olur.
 - Sadece `Portal\veri\` klasörüne küçük resim önbelleği ve arama indeksi yazar. Bu klasörü silsen bile dosyaların etkilenmez.
 - Varsayılan olarak yalnızca **bu bilgisayardan** (`127.0.0.1`) erişilebilir; ağa açık değildir.

@@ -156,6 +156,112 @@ function adDuzenle(id, cagiran) {
   kutu.addEventListener("blur", kaydet);
   ["click", "mousedown", "dblclick"].forEach((t) => kutu.addEventListener(t, (e) => { e.stopPropagation(); e.preventDefault(); }));
 }
+/* ---------------- etiketler ----------------
+   Kendi etiketlerini oluşturup video/fotoğraflara ekleyebilirsin (ör. "Zara").
+   Aramada etiket adı yazınca o etiketli dosyalar gelir. Dosyalara dokunulmaz. */
+const ETK_IKON = '<svg viewBox="0 0 24 24"><path d="M3 12V4a1 1 0 0 1 1-1h8l9 9-9 9z"/><circle cx="8" cy="8" r="1.6" class="dolu"/></svg>';
+const etiketHref = (adlar, tur) => "#/etiket?" + [].concat(adlar).map((a) => "ad=" + encodeURIComponent(a)).join("&") + (tur ? "&tur=" + tur : "");
+const MEDYA_ONBELLEK = new Map();
+function medyaHatirla(m) { if (m && m.id) MEDYA_ONBELLEK.set(m.id, m); return m; }
+function etiketKucuk(m) {
+  if (!m.etiketler?.length) return "";
+  return `<div class="etiket-kucuk" data-etk-kucuk="${m.id}">${m.etiketler.map((e) => `<span>#${esc(e)}</span>`).join("")}</div>`;
+}
+function etiketSatiri(m) {
+  medyaHatirla(m);
+  return `<div class="etiket-satiri" data-etk-id="${m.id}">${ETK_IKON}
+    ${(m.etiketler || []).map((e) => `<a class="etiket-cip" href="${etiketHref(e)}">${esc(e)}<button type="button" class="etiket-cikar" data-cikar="${esc(e)}" title="Bu etiketi kaldır">×</button></a>`).join("")}
+    <button type="button" class="etiket-ekle" data-etk-ekle="${m.id}">+ Etiket ekle</button></div>`;
+}
+async function etiketleriKaydet(id, liste) {
+  const m = await post(`/api/medya/${id}/etiketler`, { etiketler: liste });
+  medyaHatirla(m);
+  $$(`.etiket-satiri[data-etk-id="${id}"]`).forEach((el) => (el.outerHTML = etiketSatiri(m)));
+  $$(`[data-etk-kucuk="${id}"]`).forEach((el) => (el.outerHTML = etiketKucuk(m)));
+  for (const l of [IK.liste, CALAR.liste]) l.forEach((x) => { if (x.id === m.id) x.etiketler = m.etiketler; });
+  return m;
+}
+async function etiketSecici(id, cagiran) {
+  $(".etiket-secici")?.remove();
+  let m = MEDYA_ONBELLEK.get(+id) || (await api("/api/medya/" + id));
+  let tum = await api("/api/etiketler");
+  const kutu = document.createElement("div");
+  kutu.className = "etiket-secici";
+  kutu.innerHTML = `<div class="es-ust"><input type="search" placeholder="Etiket ara ya da yeni yaz…" autocomplete="off"><button type="button" class="kucuk-btn es-tamam">Tamam</button></div>
+    <div class="es-liste"></div><div class="es-alt">Birden fazla etiket seçebilirsin. Enter ile yeni etiket oluşur.</div>`;
+  document.body.appendChild(kutu);
+  const r = cagiran.getBoundingClientRect();
+  const ust = Math.min(r.bottom + 6, innerHeight - 380);
+  Object.assign(kutu.style, { top: Math.max(10, ust) + "px", left: Math.max(10, Math.min(r.left, innerWidth - 340)) + "px" });
+  const ara = $("input", kutu), liste = $(".es-liste", kutu);
+  const secili = () => new Set(m.etiketler || []);
+  function ciz() {
+    const f = ara.value.trim().toLocaleLowerCase("tr-TR");
+    const s = secili();
+    const gorunen = tum.filter((e) => !f || e.ad.toLocaleLowerCase("tr-TR").includes(f));
+    const tamEslesme = tum.some((e) => e.ad.toLocaleLowerCase("tr-TR") === f);
+    liste.innerHTML = (f && !tamEslesme ? `<button type="button" class="es-yeni">+ “${esc(ara.value.trim())}” etiketini oluştur ve ekle</button>` : "") +
+      (gorunen.length ? gorunen.map((e) => `<div class="es-satir"><label><input type="checkbox" data-ad="${esc(e.ad)}" ${s.has(e.ad) ? "checked" : ""}><span>${esc(e.ad)}</span><small>${e.adet}</small></label>
+        <button type="button" class="kalem es-duzenle" data-ad="${esc(e.ad)}" title="Etiketi yeniden adlandır">${KALEM}</button>
+        <button type="button" class="kalem es-sil" data-ad="${esc(e.ad)}" title="Etiketi tamamen sil">${COP}</button></div>`).join("")
+        : (!f ? `<div class="es-bos">Henüz etiket yok. Yukarıya bir ad yaz (ör. Zara) ve Enter'a bas.</div>` : ""));
+  }
+  async function degistir(ad, ekle) {
+    const s = secili();
+    ekle ? s.add(ad) : s.delete(ad);
+    m = await etiketleriKaydet(id, [...s]);
+    tum = await api("/api/etiketler");
+    ciz();
+  }
+  async function yeni() {
+    const ad = ara.value.trim();
+    if (!ad) return;
+    ara.value = "";
+    await degistir(ad, true);
+  }
+  ara.addEventListener("input", ciz);
+  ara.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { e.preventDefault(); yeni(); } if (e.key === "Escape") kapat(); });
+  liste.addEventListener("change", (e) => { const c = e.target.closest("input[type=checkbox]"); if (c) degistir(c.dataset.ad, c.checked); });
+  liste.addEventListener("click", async (e) => {
+    if (e.target.closest(".es-yeni")) return yeni();
+    const d = e.target.closest(".es-duzenle"), sl = e.target.closest(".es-sil");
+    if (d) {
+      e.preventDefault(); e.stopPropagation();
+      const yeniAd = prompt(`“${d.dataset.ad}” etiketinin yeni adı:`, d.dataset.ad);
+      if (yeniAd && yeniAd.trim() && yeniAd.trim() !== d.dataset.ad) {
+        await post("/api/etiket-duzenle", { eski: d.dataset.ad, yeni: yeniAd.trim() });
+        tum = await api("/api/etiketler"); m = await api("/api/medya/" + id); await etiketleriKaydet(id, m.etiketler); ciz();
+        bildir("Etiket yeniden adlandırıldı; tüm dosyalarda güncellendi.");
+      }
+    }
+    if (sl) {
+      e.preventDefault(); e.stopPropagation();
+      if (confirm(`“${sl.dataset.ad}” etiketi tüm dosyalardan kaldırılıp silinsin mi? (Dosyalar silinmez.)`)) {
+        await post("/api/etiket-sil", { ad: sl.dataset.ad });
+        tum = await api("/api/etiketler"); m = await api("/api/medya/" + id); await etiketleriKaydet(id, m.etiketler); ciz();
+      }
+    }
+  });
+  function kapat() { kutu.remove(); document.removeEventListener("mousedown", disari, true); }
+  function disari(e) { if (!kutu.contains(e.target)) kapat(); }
+  $(".es-tamam", kutu).onclick = kapat;
+  ["click", "dblclick", "keydown"].forEach((t) => kutu.addEventListener(t, (e) => e.stopPropagation()));
+  setTimeout(() => document.addEventListener("mousedown", disari, true), 0);
+  ciz();
+  ara.focus();
+}
+document.addEventListener("click", (e) => {
+  const ek = e.target.closest("[data-etk-ekle]");
+  if (ek) { e.preventDefault(); e.stopPropagation(); etiketSecici(ek.dataset.etkEkle, ek); return; }
+  const c = e.target.closest(".etiket-cikar");
+  if (c) {
+    e.preventDefault(); e.stopPropagation();
+    const id = c.closest(".etiket-satiri").dataset.etkId;
+    const m = MEDYA_ONBELLEK.get(+id);
+    if (m) etiketleriKaydet(id, (m.etiketler || []).filter((x) => x !== c.dataset.cikar));
+  }
+}, true);
+
 /* ---------------- silme (çöp kutusuna taşıma) ---------------- */
 async function dosyaSil(id, cagiran) {
   const ad = $(`.ad-metin[data-ad-id="${id}"]`)?.textContent || "Bu dosya";
@@ -207,7 +313,7 @@ function vkart(m) {
     </div>
     <div class="bilgi">
       <span class="avatar" style="background:${renk(kl)}">${esc(bas(kl))}</span>
-      <div><h3>${adAlani(m)}</h3><div class="meta">${esc(kl)}<br>${boyutFmt(m.boyut)} · ${goreceTarih(m.tarih)}</div></div>
+      <div><h3>${adAlani(m)}</h3><div class="meta">${esc(kl)}<br>${boyutFmt(m.boyut)} · ${goreceTarih(m.tarih)}</div>${etiketKucuk(m)}</div>
     </div></a>`;
 }
 function mkart(m) {
@@ -278,7 +384,7 @@ function sonsuzListe(kap, getir, ciz, sayfaBoyu = 60) {
 /* ---------------- yönlendirici ---------------- */
 const SAYFALAR = {
   "": sayfaAna, ara: sayfaAra, videolar: sayfaVideolar, izle: sayfaIzle, fotograflar: sayfaFotograflar,
-  muzik: sayfaMuzik, belgeler: sayfaBelgeler, klasorler: sayfaKlasorler, klasor: sayfaKlasor, cop: sayfaCop, wiki: sayfaWiki, dosyalar: sayfaDosyalar, ayarlar: sayfaAyarlar,
+  muzik: sayfaMuzik, belgeler: sayfaBelgeler, klasorler: sayfaKlasorler, klasor: sayfaKlasor, cop: sayfaCop, etiketler: sayfaEtiketler, etiket: sayfaEtiket, wiki: sayfaWiki, dosyalar: sayfaDosyalar, ayarlar: sayfaAyarlar,
 };
 let aktifTemizle = null;
 async function yonlendir() {
@@ -286,7 +392,7 @@ async function yonlendir() {
   const ad = parcalar[0] || "";
   const f = SAYFALAR[ad] || sayfaAna;
   if (aktifTemizle) { try { aktifTemizle(); } catch (e) {} aktifTemizle = null; }
-  $$(".yan a").forEach((a) => a.classList.toggle("aktif", a.dataset.sayfa === (ad || "ana") || (ad === "izle" && a.dataset.sayfa === "videolar") || (ad === "klasor" && a.dataset.sayfa === "klasorler")));
+  $$(".yan a").forEach((a) => a.classList.toggle("aktif", a.dataset.sayfa === (ad || "ana") || (ad === "izle" && a.dataset.sayfa === "videolar") || (ad === "klasor" && a.dataset.sayfa === "klasorler") || (ad === "etiket" && a.dataset.sayfa === "etiketler")));
   document.body.classList.remove("yan-acik");
   if (ad !== "ara") $("#aramaKutu").value = "";
   sayfa.innerHTML = '<div class="yukleniyor"></div>';
@@ -299,6 +405,7 @@ async function yonlendir() {
   }
 }
 window.addEventListener("hashchange", yonlendir);
+window.addEventListener("hashchange", () => { $(".etiket-secici")?.remove(); if (!$("#isikKutu").hidden) isikKutuKapat(); });
 
 /* ---------------- ANA SAYFA ---------------- */
 async function sayfaAna() {
@@ -366,13 +473,16 @@ async function sayfaAra(_, q) {
     return;
   }
 
-  const r = await api(`/api/ara?q=${encodeURIComponent(sorgu)}&bas=${basla}`);
+  const [r, tumEtiket] = await Promise.all([api(`/api/ara?q=${encodeURIComponent(sorgu)}&bas=${basla}`), api("/api/etiketler").catch(() => [])]);
+  const sk = sorgu.toLocaleLowerCase("tr-TR");
+  const eslesenEtiketler = basla === 0 ? tumEtiket.filter((e) => e.adet && e.ad.toLocaleLowerCase("tr-TR").includes(sk)) : [];
   const w = r.vikipedi.sonuclar;
   const d = r.dosyalar || {};
-  const yerelVar = sekme === "hepsi" && basla === 0 && (d.klasorler?.length || d.video?.length || d.foto?.length || d.muzik?.length || d.belge?.length);
+  const yerelVar = sekme === "hepsi" && basla === 0 && (eslesenEtiketler.length || d.klasorler?.length || d.video?.length || d.foto?.length || d.muzik?.length || d.belge?.length);
   let sol = "";
   const yerelBlok = () => {
     let b = "";
+    if (eslesenEtiketler.length) b += `<div class="yerel-sonuclar"><h4>${ETK_IKON}Etiketler</h4><div class="cipler" style="margin:0">${eslesenEtiketler.map((e) => `<a class="etiket-cip buyuk" href="${etiketHref(e.ad)}">#${esc(e.ad)} <small>${e.adet}</small></a>`).join("")}</div></div>`;
     if (d.klasorler?.length) b += `<div class="yerel-sonuclar"><h4>${IKON.klasor}Klasörler</h4><div class="yatay">${d.klasorler.map(klasorKart).join("")}</div></div>`;
     if (d.video?.length) b += `<div class="yerel-sonuclar"><h4>${IKON.video}Diskindeki videolar</h4><div class="yatay">${d.video.map(vkart).join("")}</div></div>`;
     if (d.foto?.length) b += `<div class="yerel-sonuclar"><h4>${IKON.foto}Fotoğraflar</h4><div class="foto-izgara" id="aramaFoto">${d.foto.slice(0, 8).map(fotoKucuk).join("")}</div></div>`;
@@ -419,7 +529,7 @@ async function sayfaVideolar(_, q) {
   document.title = "Videolar — Portal";
   const klasor = q.get("klasor") || "";
   const sira = q.get("sira") || "yeni";
-  const klasorler = await api("/api/klasorler?tur=video");
+  const [klasorler, etkV] = await Promise.all([api("/api/klasorler?tur=video"), api("/api/etiketler").catch(() => [])]);
   const cipler = [`<a class="cip ${!klasor ? "aktif" : ""}" href="#/videolar?sira=${sira}">Tümü</a>`]
     .concat(klasorler.slice(0, 30).map((k) => `<a class="cip ${k.klasor === klasor ? "aktif" : ""}" href="#/videolar?klasor=${encodeURIComponent(k.klasor)}&sira=${sira}">${esc(klasorAdi(k.klasor))} <span style="opacity:.55">${k.adet}</span></a>`));
   const siralar = [["yeni", "En yeni"], ["ad", "Ada göre"], ["rastgele", "Karışık"], ["boyut", "En büyük"]];
@@ -427,6 +537,7 @@ async function sayfaVideolar(_, q) {
     <h1 class="sayfa-baslik">${klasor ? esc(klasorAdi(klasor)) : "Videolar"}</h1>
     <p class="sayfa-alt">${klasorBilgisi("video")}</p>
     <div class="cipler">${cipler.join("")}</div>
+    ${etkV.some((e) => e.adet) ? `<div class="cipler" style="margin-top:-8px">${etkV.filter((e) => e.adet).map((e) => `<a class="etiket-cip" href="${etiketHref(e.ad, "video")}">#${esc(e.ad)}</a>`).join("")}</div>` : ""}
     <div class="cipler" style="margin-top:-8px">${siralar.map(([k, ad]) => `<a class="cip ${k === sira ? "aktif" : ""}" style="height:28px;font-size:13px" href="#/videolar?klasor=${encodeURIComponent(klasor)}&sira=${k}">${ad}</a>`).join("")}</div>
     <div class="izgara" id="vIzgara"></div></div>`;
   const kap = $("#vIzgara");
@@ -448,6 +559,7 @@ async function sayfaIzle([id]) {
       <div id="akisArac" hidden style="display:flex;gap:10px;align-items:center;margin-top:8px;font-size:13px;color:var(--metin-2)">
         <span>Uyumluluk modu — ileri sar:</span><input type="range" id="akisKonum" min="0" max="1000" value="0" style="flex:1;accent-color:var(--vurgu)"><span id="akisZaman"></span></div>
       <h1>${adAlani(m)}</h1>
+      ${etiketSatiri(m)}
       <div class="izle-satir">
         <div class="kanal"><span class="avatar" style="background:${renk(kl)}">${esc(bas(kl))}</span><div><b>${esc(kl)}</b><small>${esc(m.klasor)}</small></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -539,13 +651,14 @@ async function sayfaFotograflar(_, q) {
   document.title = "Fotoğraflar — Portal";
   const klasor = q.get("klasor") || "";
   const gorunum = q.get("g") || (klasor ? "hepsi" : "hepsi");
-  const klasorler = await api("/api/klasorler?tur=foto");
+  const [klasorler, etkF] = await Promise.all([api("/api/klasorler?tur=foto"), api("/api/etiketler").catch(() => [])]);
   let h = `<div class="dar" style="max-width:1600px"><h1 class="sayfa-baslik">${klasor ? esc(klasorAdi(klasor)) : "Fotoğraflar"}</h1>
     <p class="sayfa-alt">${klasorBilgisi("foto")}</p>
     <div class="cipler"><a class="cip ${gorunum === "hepsi" ? "aktif" : ""}" href="#/fotograflar?klasor=${encodeURIComponent(klasor)}">Zaman çizelgesi</a>
     <a class="cip ${gorunum === "album" ? "aktif" : ""}" href="#/fotograflar?g=album">Albümler (${klasorler.length})</a>
     ${klasor ? `<a class="cip" href="#/fotograflar">${IKON.geri}Tüm fotoğraflar</a>` : ""}
-    <button class="cip" id="slaytBaslat">${IKON.oynat}Slayt gösterisi</button></div>`;
+    <button class="cip" id="slaytBaslat">${IKON.oynat}Slayt gösterisi</button></div>
+    ${etkF.some((e) => e.adet) ? `<div class="cipler" style="margin-top:-8px">${etkF.filter((e) => e.adet).map((e) => `<a class="etiket-cip" href="${etiketHref(e.ad, "foto")}">#${esc(e.ad)}</a>`).join("")}</div>` : ""}`;
   if (gorunum === "album") {
     h += `<div class="albumler">${klasorler.map((k) => `<a class="album" href="#/fotograflar?klasor=${encodeURIComponent(k.klasor)}"><div class="kapak"><img loading="lazy" src="/kucuk/${k.kapak}" alt="" onerror="kucukHata(this)"></div><h4>${esc(klasorAdi(k.klasor))}</h4><span>${k.adet} fotoğraf · ${tarihFmt(k.son, { month: "long", year: "numeric" })}</span></a>`).join("")}</div></div>`;
     sayfa.innerHTML = h;
@@ -591,6 +704,7 @@ function isikKutuGoster() {
   tam.onload = () => { if (IK.liste[IK.i] === m) img.src = tam.src; };
   tam.src = "/dosya/" + m.id;
   $("#ikBilgi").innerHTML = `${IK.i + 1} / ${IK.liste.length} · ${adAlani(m)} · ${tarihFmt(m.tarih)}`;
+  $("#ikEtiket").innerHTML = etiketSatiri(m);
   // sonrakini önceden yükle
   const s = IK.liste[IK.i + 1];
   if (s) new Image().src = "/dosya/" + s.id;
@@ -981,6 +1095,56 @@ async function sayfaDosyalar(_, q) {
     await post("/api/ac", { yol: o.yol });
     bildir("“" + o.ad + "” bilgisayardaki programla açılıyor…");
   });
+}
+
+/* ---------------- ETİKETLER ---------------- */
+async function sayfaEtiketler() {
+  document.title = "Etiketler — Portal";
+  const l = await api("/api/etiketler");
+  sayfa.innerHTML = `<div class="dar" style="max-width:1000px"><h1 class="sayfa-baslik">Etiketler</h1>
+    <p class="sayfa-alt">Videolara ve fotoğraflara kendi etiketlerini ekle (ör. <b>Zara</b>, <b>Doğum günü</b>). Aramada etiket adını yazınca o dosyalar gelir. Bir videonun ya da fotoğrafın altındaki <b>+ Etiket ekle</b> ile ekleyebilirsin.</p>
+    <form class="cipler" id="yeniEtiket"><input class="filtre-kutu" placeholder="Yeni etiket adı…" maxlength="40"><button class="kucuk-btn vurgulu">${ETK_IKON}Oluştur</button></form>
+    ${l.length ? `<div class="etiket-yonetim">${l.map((e) => `<div class="ey-satir"><a href="${etiketHref(e.ad)}" class="etiket-cip buyuk">${ETK_IKON}${esc(e.ad)}</a><span class="ey-adet">${e.adet} dosya</span>
+      <button class="kalem" data-yeniden="${esc(e.ad)}" title="Yeniden adlandır" style="opacity:1">${KALEM}</button><button class="kalem cop-etk" data-etksil="${esc(e.ad)}" title="Sil" style="opacity:1">${COP}</button></div>`).join("")}</div>`
+      : bosEkran(ETK_IKON, "Henüz etiket yok", "Yukarıdan bir etiket oluştur ya da bir video izlerken altındaki “+ Etiket ekle”ye bas.")}
+    ${l.length > 1 ? `<h3 class="alt-baslik">Birden fazla etiketle filtrele</h3><div class="cipler" id="cokluSecim">${l.map((e) => `<label class="cip"><input type="checkbox" value="${esc(e.ad)}" style="accent-color:var(--vurgu)">${esc(e.ad)}</label>`).join("")}<button class="kucuk-btn" id="cokluGit">Seçilenleri göster</button></div>` : ""}</div>`;
+  $("#yeniEtiket").onsubmit = async (e) => { e.preventDefault(); const v = $("input", e.target).value.trim(); if (v) { await post("/api/etiketler", { ad: v }); sayfaEtiketler(); } };
+  sayfa.querySelector(".etiket-yonetim")?.addEventListener("click", async (e) => {
+    const y = e.target.closest("[data-yeniden]"), d = e.target.closest("[data-etksil]");
+    if (y) { const n = prompt(`“${y.dataset.yeniden}” etiketinin yeni adı:`, y.dataset.yeniden); if (n && n.trim()) { await post("/api/etiket-duzenle", { eski: y.dataset.yeniden, yeni: n.trim() }); sayfaEtiketler(); } }
+    if (d && confirm(`“${d.dataset.etksil}” etiketi tüm dosyalardan kaldırılıp silinsin mi? (Dosyalar silinmez.)`)) { await post("/api/etiket-sil", { ad: d.dataset.etksil }); sayfaEtiketler(); }
+  });
+  $("#cokluGit")?.addEventListener("click", () => { const s = $$("#cokluSecim input:checked").map((i) => i.value); if (s.length) location.hash = etiketHref(s); });
+}
+
+async function sayfaEtiket(_, q) {
+  const adlar = q.getAll("ad");
+  const sekme = q.get("tur") || "hepsi";
+  document.title = adlar.join(" + ") + " — Etiket";
+  const tum = await api("/api/etiketler");
+  const e = adlar.map((a) => "&etiket=" + encodeURIComponent(a)).join("");
+  const turler = ["video", "foto", "muzik", "belge"];
+  const sonuc = await Promise.all(turler.map((t) => (sekme === "hepsi" || sekme === t) ? api(`/api/medya?tur=${t}&sira=${t === "foto" ? "eski" : "yeni"}&adet=500${e}`) : []));
+  const [v, f, m, b] = sonuc;
+  const ekle = tum.filter((x) => !adlar.includes(x.ad));
+  sayfa.innerHTML = `<div class="dar" style="max-width:1600px">
+    <div class="yol-cubugu" style="margin-bottom:4px"><a href="#/etiketler">Etiketler</a><span style="color:var(--metin-3)">›</span><a>${esc(adlar.join(" + "))}</a></div>
+    <div class="klasor-bas"><div class="klasor-ikon-buyuk" style="background:var(--vurgu)">${ETK_IKON}</div>
+      <div style="flex:1;min-width:0"><h1 class="sayfa-baslik" style="margin:0 0 6px">${adlar.map((a) => `<span class="etiket-baslik">#${esc(a)}${adlar.length > 1 ? `<a href="${etiketHref(adlar.filter((x) => x !== a), sekme === "hepsi" ? "" : sekme)}" title="Çıkar">×</a>` : ""}</span>`).join(" ")}</h1>
+      <p class="sayfa-alt" style="margin:0">${[v.length && v.length + " video", f.length && f.length + " fotoğraf", m.length && m.length + " şarkı", b.length && b.length + " belge"].filter(Boolean).join(" · ") || "Bu etiketle dosya yok"}${adlar.length > 1 ? " — tüm seçili etiketleri taşıyanlar" : ""}</p></div>
+      ${f.length ? `<button class="kucuk-btn vurgulu" id="etSlayt">${IKON.oynat}Slayt gösterisi</button>` : ""}</div>
+    ${ekle.length ? `<div class="cipler"><span style="font-size:13px;color:var(--metin-2);align-self:center">Etiket ekleyerek daralt:</span>${ekle.slice(0, 20).map((x) => `<a class="cip" href="${etiketHref([...adlar, x.ad])}">+ ${esc(x.ad)}</a>`).join("")}</div>` : ""}
+    <div id="etIcerik"></div></div>`;
+  let c = "";
+  if (v.length) c += `<section class="bolum"><div class="bolum-bas"><h2>Videolar</h2></div><div class="izgara">${v.map(vkart).join("")}</div></section>`;
+  if (f.length) c += `<section class="bolum"><div class="bolum-bas"><h2>Fotoğraflar</h2></div><div class="foto-izgara" id="etFoto">${f.map(fotoKucuk).join("")}</div></section>`;
+  if (m.length) c += `<section class="bolum"><div class="bolum-bas"><h2>Müzik</h2></div><div class="parca-liste" id="etMuzik">${m.map(parcaSatir).join("")}</div></section>`;
+  if (b.length) c += `<section class="bolum"><div class="bolum-bas"><h2>Belgeler</h2></div><div class="belge-izgara">${b.map(belgeKart).join("")}</div></section>`;
+  $("#etIcerik").innerHTML = c || bosEkran(ETK_IKON, "Bu etiketle dosya yok", "Bir video ya da fotoğrafın altındaki “+ Etiket ekle” ile bu etiketi ekleyebilirsin.");
+  $("#etFoto")?.addEventListener("click", (ev) => { const a = ev.target.closest("[data-i]"); if (a) isikKutuAc(f, +a.dataset.i); });
+  $("#etSlayt")?.addEventListener("click", () => isikKutuAc(f, 0, true));
+  muzikListeBagla($("#etMuzik"), m);
+  belgeBagla(sayfa);
 }
 
 /* ---------------- ÇÖP KUTUSU ---------------- */

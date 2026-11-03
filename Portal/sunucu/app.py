@@ -161,7 +161,8 @@ def medya_liste():
     return jsonify(kutup.liste(
         tur, request.args.get("sira", "yeni"), request.args.get("klasor") or None,
         int(request.args.get("bas", 0)), min(int(request.args.get("adet", 60)), 500),
-        request.args.get("ara") or None))
+        request.args.get("ara") or None,
+        [e for e in request.args.getlist("etiket") if e]))
 
 
 @app.route("/api/medya/<int:mid>")
@@ -211,6 +212,41 @@ def ad_degistir(mid):
     """Dosyaya Portal içinde görünen bir ad verir. Diskteki dosyanın adı DEĞİŞMEZ."""
     v = request.get_json(force=True, silent=True) or {}
     m = kutup.ad_ver(mid, v.get("ad"))
+    if not m:
+        abort(404)
+    return jsonify(m)
+
+
+@app.route("/api/etiketler")
+def etiketler():
+    return jsonify(kutup.etiket_listesi())
+
+
+@app.route("/api/etiketler", methods=["POST"])
+def etiket_olustur():
+    v = request.get_json(force=True, silent=True) or {}
+    ad = kutup.etiket_olustur(v.get("ad"))
+    if not ad:
+        abort(400)
+    return jsonify({"ad": ad})
+
+
+@app.route("/api/etiket-duzenle", methods=["POST"])
+def etiket_duzenle():
+    v = request.get_json(force=True, silent=True) or {}
+    return jsonify({"ok": kutup.etiket_yeniden_adlandir(v.get("eski"), v.get("yeni"))})
+
+
+@app.route("/api/etiket-sil", methods=["POST"])
+def etiket_sil():
+    v = request.get_json(force=True, silent=True) or {}
+    return jsonify({"ok": kutup.etiket_sil(v.get("ad"))})
+
+
+@app.route("/api/medya/<int:mid>/etiketler", methods=["POST"])
+def medya_etiket(mid):
+    v = request.get_json(force=True, silent=True) or {}
+    m = kutup.etiket_ata(mid, v.get("etiketler") or [])
     if not m:
         abort(404)
     return jsonify(m)

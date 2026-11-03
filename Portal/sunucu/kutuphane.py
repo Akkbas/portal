@@ -68,6 +68,7 @@ class Kutuphane:
         self.tarama = {"durum": "bekliyor", "islenen": 0, "bulunan": 0, "son": None}
         self.uretim_kilit = threading.Semaphore(2)
         self.ad_kilit = threading.Lock()
+        self.etk = {"liste": [], "atama": {}}
         # aynı anda en fazla 6 istek küçük resim için bekleyebilir; gerisi "sonra tekrar dene" alır.
         # Böylece sayfa istekleri küçük resim kuyruğunun arkasında kalmaz.
         self.bekleyen = threading.BoundedSemaphore(6)
@@ -146,8 +147,132 @@ class Kutuphane:
         sutunlar = [r[1] for r in c.execute("PRAGMA table_info(medya)")]
         if "ozel_ad" not in sutunlar:
             c.execute("ALTER TABLE medya ADD COLUMN ozel_ad TEXT")
+        c.executescript("""
+        CREATE TABLE IF NOT EXISTS etiket(yol TEXT NOT NULL, ad TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS ix_etiket_ad ON etiket(ad);
+        CREATE INDEX IF NOT EXISTS ix_etiket_yol ON etiket(yol);
+        """)
         c.commit()
         self._ozel_adlari_uygula()
+        self._etiketleri_yukle()
+
+    # ---------- etiketler ----------
+    # Etiketler Portal\veri\etiketler.json dosyasında saklanır (dosyalara dokunulmaz).
+    # Biçim: {"liste": ["Zara", "Aile"], "atama": {"göreli/yol.mp4": ["Zara"]}}
+    def _etiket_yolu(self):
+        return os.path.join(self.veri, "etiketler.json")
+
+    def _etiketleri_yukle(self):
+        try:
+            with open(self._etiket_yolu(), encoding="utf-8") as f:
+                d = json.load(f)
+            self.etk = {"liste": list(d.get("liste", [])), "atama": dict(d.get("atama", {}))}
+        except Exception:
+            self.etk = {"liste": [], "atama": {}}
+        c = self.db()
+        c.execute("DELETE FROM etiket")
+        c.executemany("INSERT INTO etiket(yol, ad) VALUES(?, ?)",
+                      [(y, e) for y, l in self.etk["atama"].items() for e in l])
+        c.commit()
+
+    def _etiket_kaydet(self):
+        gecici = self._etiket_yolu() + ".tmp"
+        with open(gecici, "w", encoding="utf-8") as f:
+            json.dump(self.etk, f, ensure_ascii=False, indent=1)
+        os.replace(gecici, self._etiket_yolu())
+
+    def _etiket_bul(self, ad):
+        """Aynı etiketin farklı yazımlarını (zara / Zara / ZARA) tek etiket sayar."""
+        k = katla(ad)
+        return next((e for e in self.etk["liste"] if katla(e) == k), None)
+
+    def _etiket_temiz(self, ad):
+        return re.sub(r"\s+", " ", str(ad or "")).strip()[:40]
+
+    def etiket_listesi(self):
+        sayilar = {r[0]: r[1] for r in self.db().execute(
+            "SELECT e.ad, COUNT(m.id) FROM etiket e JOIN medya m ON m.yol=e.yol GROUP BY e.ad")}
+        l = [{"ad": e, "adet": sayilar.get(e, 0)} for e in self.etk["liste"]]
+        l.sort(key=lambda o: katla(o["ad"]))
+        return l
+
+    def etiket_olustur(self, ad):
+        ad = self._etiket_temiz(ad)
+        if not ad:
+            return None
+        with self.ad_kilit:
+            var = self._etiket_bul(ad)
+            if var:
+                return var
+            self.etk["liste"].append(ad)
+            self._etiket_kaydet()
+        return ad
+
+    def etiket_ata(self, mid, etiketler):
+        m = self.db().execute("SELECT yol FROM medya WHERE id=?", (mid,)).fetchone()
+        if not m:
+            return None
+        yol = m["yol"]
+        with self.ad_kilit:
+            temiz = []
+            for e in etiketler or []:
+                e = self._etiket_temiz(e)
+                if not e:
+                    continue
+                var = self._etiket_bul(e)
+                if not var:
+                    self.etk["liste"].append(e)
+                    var = e
+                if var not in temiz:
+                    temiz.append(var)
+            if temiz:
+                self.etk["atama"][yol] = temiz
+            else:
+                self.etk["atama"].pop(yol, None)
+            self._etiket_kaydet()
+            c = self.db()
+            c.execute("DELETE FROM etiket WHERE yol=?", (yol,))
+            c.executemany("INSERT INTO etiket(yol, ad) VALUES(?, ?)", [(yol, e) for e in temiz])
+            c.commit()
+        return self.al(mid)
+
+    def etiket_yeniden_adlandir(self, eski, yeni):
+        yeni = self._etiket_temiz(yeni)
+        if not yeni:
+            return False
+        with self.ad_kilit:
+            eski = self._etiket_bul(eski)
+            if not eski:
+                return False
+            hedef = self._etiket_bul(yeni)
+            if hedef and hedef != eski:
+                yeni = hedef          # var olan bir etiketle birleştir
+                self.etk["liste"].remove(eski)
+            else:
+                self.etk["liste"][self.etk["liste"].index(eski)] = yeni
+            for y, l in self.etk["atama"].items():
+                if eski in l:
+                    l2 = [yeni if e == eski else e for e in l]
+                    self.etk["atama"][y] = list(dict.fromkeys(l2))
+            self._etiket_kaydet()
+        self._etiketleri_yukle()
+        return True
+
+    def etiket_sil(self, ad):
+        with self.ad_kilit:
+            ad = self._etiket_bul(ad)
+            if not ad:
+                return False
+            self.etk["liste"].remove(ad)
+            for y in list(self.etk["atama"]):
+                l = [e for e in self.etk["atama"][y] if e != ad]
+                if l:
+                    self.etk["atama"][y] = l
+                else:
+                    del self.etk["atama"][y]
+            self._etiket_kaydet()
+        self._etiketleri_yukle()
+        return True
 
     # ---------- çöp kutusu ----------
     # "Sil" dosyayı hemen yok etmez: diskteki Portal\Cop klasörüne taşır (aynı disk, anında).
@@ -478,6 +603,7 @@ class Kutuphane:
     def satir(self, r):
         d = dict(r)
         d["dosya_adi"] = d["ad"]
+        d["etiketler"] = self.etk["atama"].get(d["yol"], [])
         if d.get("ozel_ad"):
             d["ad"] = d["ozel_ad"]
             if d["tur"] == "muzik":
@@ -485,16 +611,24 @@ class Kutuphane:
         d["oynatilabilir"] = d.get("uzanti") in TARAYICI_VIDEO if d["tur"] == "video" else True
         return d
 
-    def liste(self, tur, sira="yeni", klasor=None, bas=0, adet=60, ara=None):
+    def liste(self, tur, sira="yeni", klasor=None, bas=0, adet=60, ara=None, etiketler=None):
         sql = "SELECT m.*, i.konum, i.sure AS izleme_sure FROM medya m LEFT JOIN izleme i ON i.id=m.id WHERE m.tur=?"
         p = [tur]
+        if tur == "hepsi":
+            sql = sql.replace("WHERE m.tur=?", "WHERE 1=1")
+            p = []
+        for e in etiketler or []:
+            # birden çok etiket seçilirse hepsini taşıyanlar gelir
+            sql += " AND m.yol IN (SELECT yol FROM etiket WHERE ad=?)"
+            p.append(e)
         if klasor:
             sql += " AND (m.klasor=? OR m.klasor LIKE ? ESCAPE '\\')"
             p += [klasor, like_kacis(klasor) + "/%"]
         if ara:
-            sql += " AND (katla(m.ozel_ad) LIKE ? OR katla(m.ad) LIKE ? OR katla(m.baslik) LIKE ? OR katla(m.sanatci) LIKE ? OR katla(m.album) LIKE ?)"
+            sql += (" AND (katla(m.ozel_ad) LIKE ? OR katla(m.ad) LIKE ? OR katla(m.baslik) LIKE ? OR katla(m.sanatci) LIKE ?"
+                    " OR katla(m.album) LIKE ? OR m.yol IN (SELECT yol FROM etiket WHERE katla(ad) LIKE ?))")
             a = "%" + katla(ara) + "%"
-            p += [a, a, a, a, a]
+            p += [a, a, a, a, a, a]
         sira_sql = {
             "yeni": "m.tarih DESC", "eski": "m.tarih ASC", "ad": "m.klasor, m.ad COLLATE NOCASE",
             "boyut": "m.boyut DESC", "rastgele": "RANDOM()", "eklenme": "m.eklenme DESC",
@@ -601,11 +735,13 @@ class Kutuphane:
     def ara(self, q, adet=12):
         k = katla(q)
         a = "%" + k + "%"
+        etk = "yol IN (SELECT yol FROM etiket WHERE katla(ad) LIKE ?)"
         sql = """SELECT * FROM medya WHERE katla(ozel_ad) LIKE ? OR katla(ad) LIKE ? OR katla(baslik) LIKE ?
-                 OR katla(sanatci) LIKE ? OR katla(album) LIKE ? OR katla(klasor) LIKE ?
-                 ORDER BY CASE WHEN katla(ozel_ad) LIKE ? THEN 0 WHEN katla(ad) LIKE ? THEN 1 ELSE 2 END, tarih DESC LIMIT ?"""
+                 OR katla(sanatci) LIKE ? OR katla(album) LIKE ? OR katla(klasor) LIKE ? OR """ + etk + """
+                 ORDER BY CASE WHEN """ + etk + """ THEN 0 WHEN katla(ozel_ad) LIKE ? THEN 1 WHEN katla(ad) LIKE ? THEN 2 ELSE 3 END,
+                 tarih DESC LIMIT ?"""
         sonuc = {"video": [], "foto": [], "muzik": [], "belge": []}
-        for r in self.db().execute(sql, (a, a, a, a, a, a, a, k + "%", 400)):
+        for r in self.db().execute(sql, (a, a, a, a, a, a, a, a, a, k + "%", 400)):
             l = sonuc[r["tur"]]
             if len(l) < adet:
                 l.append(self.satir(r))
