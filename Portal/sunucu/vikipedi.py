@@ -140,7 +140,7 @@ class ZimDosyasi:
 
     def rastgele(self, adet=6):
         cikti, deneme, gorulen = [], 0, set()
-        while len(cikti) < adet and deneme < adet * 15:
+        while len(cikti) < adet and deneme < adet * 6:
             deneme += 1
             try:
                 with self.kilit:
@@ -401,8 +401,43 @@ class Vikipedi:
                 pass
         return cikti[:adet]
 
+    def havuzu_baslat(self):
+        """Keşfet kartları için arka planda rastgele makaleler hazırlar.
+        Büyük ZIM dosyası yavaş bir diskteyken sayfaların beklememesi için."""
+        import collections
+        self.havuz = collections.deque(maxlen=60)
+        if not self.zimler:
+            return
+
+        def doldur():
+            import time
+            while True:
+                if len(self.havuz) < 40:
+                    try:
+                        z = random.choice(list(self.zimler.values()))
+                        for o in z.rastgele(3):
+                            self.havuz.append(o)
+                    except Exception as ex:
+                        print("keşfet havuzu hatası", ex)
+                        time.sleep(5)
+                    time.sleep(0.3)
+                else:
+                    time.sleep(2)
+        threading.Thread(target=doldur, daemon=True).start()
+
     def rastgele(self, adet=6):
         if not self.zimler:
             return []
-        z = random.choice(list(self.zimler.values()))
-        return z.rastgele(adet)
+        havuz = getattr(self, "havuz", None)
+        cikti = []
+        while havuz and len(cikti) < adet:
+            try:
+                cikti.append(havuz.popleft())
+            except IndexError:
+                break
+        if len(cikti) < min(adet, 2):
+            # havuz henüz dolmadıysa az sayıda makaleyi doğrudan getir
+            z = random.choice(list(self.zimler.values()))
+            cikti += z.rastgele(min(adet, 3) - len(cikti))
+        cikti.sort(key=lambda o: 0 if o.get("resim") else 1)
+        return cikti

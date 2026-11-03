@@ -1,6 +1,16 @@
 /* Portal arayüzü — tek sayfalık uygulama (internet gerektirmez) */
 "use strict";
 
+/* küçük resim sunucusu meşgulse birkaç kez tekrar dener; hiç yoksa resmi kaldırır */
+function kucukHata(img, gizle) {
+  const n = +(img.dataset.n || 0);
+  if (img.src.includes("/kucuk/") && n < 6) {
+    img.dataset.n = n + 1;
+    setTimeout(() => { if (img.isConnected) img.src = img.src.split("?")[0] + "?d=" + (n + 1); }, 900 + n * 900 + Math.random() * 600);
+    return;
+  }
+  if (gizle) img.style.opacity = 0; else img.remove();
+}
 const $ = (s, k = document) => k.querySelector(s);
 const $$ = (s, k = document) => [...k.querySelectorAll(s)];
 const sayfa = $("#sayfa");
@@ -87,7 +97,7 @@ const IKON = {
 const UZ_RENK = { pdf: "#d63c2f", doc: "#2b5bb8", docx: "#2b5bb8", xls: "#1e7a45", xlsx: "#1e7a45", csv: "#1e7a45", ppt: "#c4501e", pptx: "#c4501e", txt: "#6b6b6b", md: "#6b6b6b", epub: "#7a4bb8" };
 
 function kucukResim(m, cls = "") {
-  return `<div class="yer-tutucu">${IKON[m.tur] || IKON.dosya}</div><img class="${cls}" loading="lazy" src="/kucuk/${m.id}" alt="" onerror="this.remove()" onload="if(!this.naturalWidth)this.remove()" style="position:relative">`;
+  return `<div class="yer-tutucu">${IKON[m.tur] || IKON.dosya}</div><img class="${cls}" loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this)" onload="if(this.naturalWidth<2)this.remove()" style="position:relative">`;
 }
 
 /* ---------------- kart şablonları ---------------- */
@@ -119,7 +129,7 @@ function belgeKart(m) {
   const uz = (m.uzanti || "").slice(1);
   return `<div class="belge" data-id="${m.id}" data-uz="${esc(uz)}" data-yol="${esc(m.yol)}">
     <div class="sayfa-onizleme"><span class="uz" style="background:${UZ_RENK[uz] || "#555"}">${esc(uz.toUpperCase())}</span>
-      ${uz === "pdf" ? `<img loading="lazy" src="/kucuk/${m.id}" alt="" style="position:absolute;inset:0" onerror="this.remove()" onload="if(!this.naturalWidth)this.remove()">` : ""}</div>
+      ${uz === "pdf" ? `<img loading="lazy" src="/kucuk/${m.id}" alt="" style="position:absolute;inset:0" onerror="kucukHata(this)" onload="if(this.naturalWidth<2)this.remove()">` : ""}</div>
     <h4>${esc(m.ad)}</h4><span>${boyutFmt(m.boyut)} · ${goreceTarih(m.tarih)}</span></div>`;
 }
 function sayilarMetni(say, kisa = false) {
@@ -131,14 +141,14 @@ function klasorKart(k) {
   return `<a class="kkart" href="${klasorHref(k.yol)}">
     <div class="kapak" style="--k:${renk(k.ad)}">
       <div class="yer-tutucu">${IKON.klasor}</div>
-      ${k.kapak ? `<img loading="lazy" src="/kucuk/${k.kapak}" alt="" onerror="this.remove()" onload="if(!this.naturalWidth)this.remove()">` : ""}
+      ${k.kapak ? `<img loading="lazy" src="/kucuk/${k.kapak}" alt="" onerror="kucukHata(this)" onload="if(this.naturalWidth<2)this.remove()">` : ""}
       <div class="kkart-ust">${["video", "foto", "muzik", "belge"].filter((t) => k.sayilar[t]).map((t) => `<span>${IKON[t]}${k.sayilar[t]}</span>`).join("")}</div>
     </div>
     <h4>${esc(k.ad)}</h4><span>${sayilarMetni(k.sayilar)}</span></a>`;
 }
 
 function fotoKucuk(m, i) {
-  return `<a href="javascript:void(0)" data-i="${i}" data-id="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="${esc(m.ad)}" onerror="this.style.opacity=0"></a>`;
+  return `<a href="javascript:void(0)" data-i="${i}" data-id="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="${esc(m.ad)}" onerror="kucukHata(this, true)"></a>`;
 }
 function bosEkran(ikon, baslik, metin) {
   return `<div class="bos">${ikon}<h3>${baslik}</h3><p>${metin}</p></div>`;
@@ -442,7 +452,7 @@ async function sayfaFotograflar(_, q) {
     ${klasor ? `<a class="cip" href="#/fotograflar">${IKON.geri}Tüm fotoğraflar</a>` : ""}
     <button class="cip" id="slaytBaslat">${IKON.oynat}Slayt gösterisi</button></div>`;
   if (gorunum === "album") {
-    h += `<div class="albumler">${klasorler.map((k) => `<a class="album" href="#/fotograflar?klasor=${encodeURIComponent(k.klasor)}"><div class="kapak"><img loading="lazy" src="/kucuk/${k.kapak}" alt="" onerror="this.remove()"></div><h4>${esc(klasorAdi(k.klasor))}</h4><span>${k.adet} fotoğraf · ${tarihFmt(k.son, { month: "long", year: "numeric" })}</span></a>`).join("")}</div></div>`;
+    h += `<div class="albumler">${klasorler.map((k) => `<a class="album" href="#/fotograflar?klasor=${encodeURIComponent(k.klasor)}"><div class="kapak"><img loading="lazy" src="/kucuk/${k.kapak}" alt="" onerror="kucukHata(this)"></div><h4>${esc(klasorAdi(k.klasor))}</h4><span>${k.adet} fotoğraf · ${tarihFmt(k.son, { month: "long", year: "numeric" })}</span></a>`).join("")}</div></div>`;
     sayfa.innerHTML = h;
     $("#slaytBaslat").onclick = async () => { const l = await api("/api/medya?tur=foto&sira=rastgele&adet=500"); if (l.length) isikKutuAc(l, 0, true); };
     return;
@@ -513,7 +523,7 @@ document.addEventListener("keydown", (e) => {
 /* ---------------- MÜZİK ---------------- */
 function parcaSatir(m, i) {
   return `<div class="parca" data-i="${i}" data-id="${m.id}"><span class="no">${i + 1}</span>
-    <span class="kapakcik">${IKON.muzik}<img loading="lazy" src="/kucuk/${m.id}" alt="" style="position:absolute;width:48px;height:48px" onerror="this.remove()" onload="if(!this.naturalWidth)this.remove()"></span>
+    <span class="kapakcik">${IKON.muzik}<img loading="lazy" src="/kucuk/${m.id}" alt="" style="position:absolute;width:48px;height:48px" onerror="kucukHata(this)" onload="if(this.naturalWidth<2)this.remove()"></span>
     <span><b>${esc(m.baslik || m.ad)}</b><small>${esc(m.sanatci || klasorAdi(m.klasor))}</small></span>
     <span class="albumad">${esc(m.album || klasorAdi(m.klasor))}</span><span class="surem">${sureFmt(m.sure)}</span></div>`;
 }
@@ -529,7 +539,7 @@ async function sayfaMuzik(_, q) {
   const [klasorler, liste] = await Promise.all([api("/api/klasorler?tur=muzik"), api(`/api/medya?tur=muzik&sira=ad&adet=2000&klasor=${encodeURIComponent(klasor)}`)]);
   const toplamSure = liste.reduce((t, m) => t + (m.sure || 0), 0);
   sayfa.innerHTML = `<div class="dar">
-    <div class="muzik-kahraman"><div class="buyuk-kapak">${klasor && liste[0] ? `<img src="/kucuk/${liste[0].id}" alt="" onerror="this.remove()">` : ""}${IKON.muzik}</div>
+    <div class="muzik-kahraman"><div class="buyuk-kapak">${klasor && liste[0] ? `<img src="/kucuk/${liste[0].id}" alt="" onerror="kucukHata(this)">` : ""}${IKON.muzik}</div>
       <div><div style="font-size:12.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--vurgu)">${klasor ? "Albüm / klasör" : "Kütüphane"}</div>
       <h1>${klasor ? esc(klasorAdi(klasor)) : "Müziğin"}</h1><p>${liste.length} şarkı${toplamSure ? " · " + Math.round(toplamSure / 60) + " dakika" : ""}</p>
       <div style="display:flex;gap:8px"><button class="kucuk-btn vurgulu" id="hepsiniCal">${IKON.oynat}Çal</button><button class="kucuk-btn" id="karisikCal">${IKON.karisik}Karışık çal</button></div></div></div>
@@ -559,7 +569,7 @@ function calarYukle() {
   $("#calarAlt").textContent = [m.sanatci, m.album || klasorAdi(m.klasor)].filter(Boolean).join(" · ");
   const k = $("#calarKapak");
   k.style.visibility = "hidden";
-  k.onload = () => (k.style.visibility = k.naturalWidth ? "visible" : "hidden");
+  k.onload = () => (k.style.visibility = k.naturalWidth > 1 ? "visible" : "hidden");
   k.src = "/kucuk/" + m.id;
   if ("mediaSession" in navigator) {
     navigator.mediaSession.metadata = new MediaMetadata({ title: m.baslik || m.ad, artist: m.sanatci || "", album: m.album || klasorAdi(m.klasor), artwork: [{ src: "/kucuk/" + m.id, sizes: "480x480", type: "image/jpeg" }] });

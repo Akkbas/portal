@@ -111,6 +111,9 @@ kutup = Kutuphane(KOK, VERI, AYAR)
 viki = Vikipedi(KOK, AYAR.get("vikipedi_klasorleri", []))
 
 
+BOS_GIF = bytes.fromhex("47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b")
+
+
 def yerel_istek():
     return request.remote_addr in ("127.0.0.1", "::1")
 
@@ -205,9 +208,16 @@ def izleme(mid):
 
 @app.route("/kucuk/<int:mid>")
 def kucuk(mid):
-    y = kutup.kucuk_resim(mid)
+    y = kutup.kucuk_resim(mid, bekleme=False)
+    if y == "MESGUL":
+        r = Response("mesgul", status=503)
+        r.headers["Retry-After"] = "2"
+        return r
     if not y:
-        return Response(status=204)
+        # küçük resim yok: 1x1 saydam GIF (tarayıcı tekrar istemesin)
+        r = Response(BOS_GIF, mimetype="image/gif")
+        r.headers["Cache-Control"] = "public, max-age=86400"
+        return r
     return send_file(y, mimetype="image/jpeg", max_age=86400 * 30)
 
 
@@ -432,6 +442,7 @@ def zim_ham(zid, yol):
 @app.route("/api/yeniden-tara", methods=["POST"])
 def yeniden_tara():
     kutup.tara_arkaplanda()
+    viki.havuzu_baslat()
     return jsonify({"ok": True})
 
 
@@ -469,7 +480,7 @@ def baslat():
     print("Portal çalışıyor →", ADRES, "| disk:", KOK)
     try:
         from waitress import serve
-        serve(app, host=host, port=PORT, threads=12, channel_timeout=300)
+        serve(app, host=host, port=PORT, threads=32, channel_timeout=300, connection_limit=200)
     except ImportError:
         app.run(host=host, port=PORT, threaded=True)
 

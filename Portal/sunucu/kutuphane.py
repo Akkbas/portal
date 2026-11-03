@@ -67,6 +67,9 @@ class Kutuphane:
         self.yerel = threading.local()
         self.tarama = {"durum": "bekliyor", "islenen": 0, "bulunan": 0, "son": None}
         self.uretim_kilit = threading.Semaphore(2)
+        # aynı anda en fazla 6 istek küçük resim için bekleyebilir; gerisi "sonra tekrar dene" alır.
+        # Böylece sayfa istekleri küçük resim kuyruğunun arkasında kalmaz.
+        self.bekleyen = threading.BoundedSemaphore(6)
         self.ffmpeg = self._ffmpeg_bul()
         self._sema()
 
@@ -77,9 +80,11 @@ class Kutuphane:
             c = sqlite3.connect(self.db_yol, timeout=30, check_same_thread=False)
             c.row_factory = sqlite3.Row
             c.create_function("katla", 1, katla, deterministic=True)
-            # Harici disk aniden çıkarılabileceği için WAL yerine klasik günlük + tam senkron
-            c.execute("PRAGMA journal_mode=DELETE")
-            c.execute("PRAGMA synchronous=FULL")
+            # WAL: tarama yazarken sayfalar okumaya devam edebilsin (kilitlenip beklemesin).
+            # Disk aniden çıkarılırsa bozulan indeks açılışta otomatik yenilenir.
+            c.execute("PRAGMA journal_mode=WAL")
+            c.execute("PRAGMA synchronous=NORMAL")
+            c.execute("PRAGMA busy_timeout=5000")
             self.yerel.c = c
         return c
 
@@ -473,13 +478,21 @@ class Kutuphane:
             except OSError:
                 pass
 
-    def kucuk_resim(self, mid):
-        """Küçük resim dosyasının yolunu döndürür; üretilemiyorsa None."""
+    def kucuk_resim(self, mid, bekleme=True):
+        """Küçük resim dosyasının yolunu döndürür; üretilemiyorsa None.
+        Üretici meşgulse ve bekleme=False ise "MESGUL" döner."""
         hedef = self._kucuk_yolu(mid)
         if os.path.exists(hedef):
             return hedef
         if os.path.exists(hedef + ".yok"):
             return None
+        if not bekleme:
+            if not self.bekleyen.acquire(blocking=False):
+                return "MESGUL"
+            try:
+                return self.kucuk_resim(mid, True)
+            finally:
+                self.bekleyen.release()
         m = self.al(mid)
         if not m:
             return None
