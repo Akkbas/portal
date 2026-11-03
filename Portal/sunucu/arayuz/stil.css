@@ -500,3 +500,15 @@ label.cip { cursor: pointer; }
 .saglik-ozet.iyi svg { color: var(--yesil); }
 .saglik-ozet.kotu { background: color-mix(in srgb, #e03131 12%, transparent); }
 .saglik-ozet.kotu svg { color: #e03131; }
+
+/* geçmişte bugün — kısa görünüm */
+.gecmis-ozet { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 430px), 1fr)); gap: 14px; }
+.gecmis-kart { background: var(--yuzey); border: 1px solid var(--cizgi); border-radius: 16px; padding: 12px 14px 14px; }
+.gecmis-kart .gecmis-bas { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+.gecmis-kart .gecmis-bas b { font-family: var(--baslik-yazi); font-size: 15.5px; color: var(--vurgu); }
+.gecmis-kart .gecmis-bas span { font-size: 13px; color: var(--metin-3); font-weight: 600; }
+.gecmis-kart .gecmis-seri { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.gecmis-kart .ani { width: auto; border-radius: 9px; }
+.ani.fazla { display: grid; place-items: center; background: var(--yuzey-2); color: var(--metin-2); font-weight: 700; font-size: 15px; }
+.ani.fazla:hover { background: var(--vurgu-acik); color: var(--vurgu); }
+.foto-izgara.gecmis-seri .ani { width: auto; border-radius: 8px; }

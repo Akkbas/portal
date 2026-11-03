@@ -345,7 +345,7 @@ def takvim():
 
 @app.route("/api/gecmiste-bugun")
 def gecmiste_bugun():
-    return jsonify(kutup.gecmiste_bugun())
+    return jsonify(kutup.gecmiste_bugun(adet=min(int(request.args.get("adet", 8)), 2000)))
 
 
 @app.route("/api/saglik")

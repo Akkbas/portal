@@ -717,13 +717,14 @@ class Kutuphane:
                  AND strftime('%m-%d', tarih, 'unixepoch', 'localtime') = ?
                  AND CAST(strftime('%Y', tarih, 'unixepoch', 'localtime') AS INTEGER) < ?
                  ORDER BY tarih DESC"""
-        yillar = {}
+        yillar, sayi = {}, {}
         for r in self.db().execute(sql, ("%02d-%02d" % (ay, gun), bugun.tm_year)):
             y = time.localtime(r["tarih"]).tm_year
             l = yillar.setdefault(y, [])
+            sayi[y] = sayi.get(y, 0) + 1
             if len(l) < adet:
                 l.append(self.satir(r))
-        return [{"yil": y, "once": bugun.tm_year - y, "ogeler": l} for y, l in sorted(yillar.items(), reverse=True)]
+        return [{"yil": y, "once": bugun.tm_year - y, "toplam": sayi[y], "ogeler": l} for y, l in sorted(yillar.items(), reverse=True)]
 
     def buyuk_goruntu(self, mid):
         """Tarayıcının açamadığı fotoğraflar (HEIC, TIFF) için ekrana uygun JPEG üretir (önbellekli)."""

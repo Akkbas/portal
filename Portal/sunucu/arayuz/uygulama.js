@@ -382,6 +382,32 @@ function klasorKart(k) {
     <h4>${esc(k.ad)}</h4><span>${sayilarMetni(k.sayilar)}</span></a>`;
 }
 
+/* Geçmişte bugün: her yıl için küçük bir kart, en fazla 5 anı; fazlası "+N" ile tümü sayfasına */
+function gecmisOzet(gecmis) {
+  return `<div class="gecmis-ozet">${gecmis.map((g) => {
+    const goster = g.ogeler.slice(0, 5), kalan = (g.toplam || g.ogeler.length) - goster.length;
+    return `<div class="gecmis-kart"><div class="gecmis-bas"><b>${g.once} yıl önce</b><span>${g.yil}</span></div>
+      <div class="gecmis-seri" data-yil="${g.yil}">${goster.map((m) => aniKart(m)).join("")}${kalan > 0 ? `<a class="ani fazla" href="#/gecmis?y=${g.yil}">+${kalan}</a>` : ""}</div></div>`;
+  }).join("")}</div>`;
+}
+function gecmisBagla(kap, gecmis) {
+  $$(".gecmis-seri", kap).forEach((el) => {
+    const g = gecmis.find((x) => x.yil === +el.dataset.yil);
+    el.addEventListener("click", (e) => { const a = e.target.closest("[data-ani]"); if (!a) return; const fotolar = g.ogeler.filter((x) => x.tur === "foto"); isikKutuAc(fotolar, fotolar.findIndex((x) => x.id === +a.dataset.ani)); });
+  });
+}
+async function sayfaGecmis(_, q) {
+  document.title = "Geçmişte bugün — Portal";
+  const gecmis = await api("/api/gecmiste-bugun?adet=500");
+  const bugun = new Date().toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+  sayfa.innerHTML = `<div class="dar" style="max-width:1500px"><h1 class="sayfa-baslik">Geçmişte bugün</h1>
+    <p class="sayfa-alt">Önceki yıllarda ${bugun} tarihinde çekilen fotoğraf ve videolar. <a href="#/takvim" style="color:var(--vurgu)">Takvimi aç</a></p>
+    ${gecmis.length ? gecmis.map((g) => `<section class="bolum" id="y${g.yil}"><div class="bolum-bas"><h2>${g.once} yıl önce · ${g.yil}</h2><span style="color:var(--metin-2);font-size:14px">${g.ogeler.length} anı</span></div>
+      <div class="foto-izgara gecmis-seri" data-yil="${g.yil}">${g.ogeler.map((m) => aniKart(m, true)).join("")}</div></section>`).join("")
+      : bosEkran(IKON.foto, "Bugünün tarihinde eski bir anı yok", "Önceki yıllarda " + bugun + " günü çekilmiş fotoğraf ya da video bulunamadı.")}</div>`;
+  gecmisBagla(sayfa, gecmis);
+  if (q.get("y")) setTimeout(() => document.getElementById("y" + q.get("y"))?.scrollIntoView({ behavior: "smooth" }), 100);
+}
 function aniKart(m) {
   if (m.tur === "video") return `<a class="ani" href="#/izle/${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this, true)"><span class="ani-video">${IKON.oynat}</span></a>`;
   return `<a class="ani" href="javascript:void(0)" data-ani="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this, true)"></a>`;
@@ -422,7 +448,7 @@ function sonsuzListe(kap, getir, ciz, sayfaBoyu = 60) {
 /* ---------------- yönlendirici ---------------- */
 const SAYFALAR = {
   "": sayfaAna, ara: sayfaAra, videolar: sayfaVideolar, izle: sayfaIzle, fotograflar: sayfaFotograflar,
-  muzik: sayfaMuzik, belgeler: sayfaBelgeler, klasorler: sayfaKlasorler, klasor: sayfaKlasor, cop: sayfaCop, takvim: sayfaTakvim, etiketler: sayfaEtiketler, etiket: sayfaEtiket, wiki: sayfaWiki, dosyalar: sayfaDosyalar, ayarlar: sayfaAyarlar,
+  muzik: sayfaMuzik, belgeler: sayfaBelgeler, klasorler: sayfaKlasorler, klasor: sayfaKlasor, cop: sayfaCop, takvim: sayfaTakvim, gecmis: sayfaGecmis, etiketler: sayfaEtiketler, etiket: sayfaEtiket, wiki: sayfaWiki, dosyalar: sayfaDosyalar, ayarlar: sayfaAyarlar,
 };
 let aktifTemizle = null;
 async function yonlendir() {
@@ -467,20 +493,17 @@ async function sayfaAna() {
       <a href="#/belgeler">${IKON.belge}<b>${s.belge}</b> belge</a>
     </div></section>`;
   if (saglik?.uyarilar?.length) h += `<a class="saglik-uyari" href="#/ayarlar">${IKON.kalkan}<div><b>Disk uyarısı</b><span>${esc(saglik.uyarilar[0])}</span></div></a>`;
-  if (gecmis.length) {
-    h += `<section class="bolum"><div class="bolum-bas"><h2>Geçmişte bugün</h2><a href="#/takvim">Takvimi aç</a></div><div class="gecmis">${gecmis.map((g) =>
-      `<div class="gecmis-yil"><div class="gecmis-bas"><b>${g.once} yıl önce</b><span>${tarihFmt(g.ogeler[0].tarih, { day: "numeric", month: "long", year: "numeric" })} · ${g.ogeler.length} anı</span></div>
-      <div class="yatay gecmis-seri" data-yil="${g.yil}">${g.ogeler.map((m, i) => aniKart(m, i)).join("")}</div></div>`).join("")}</div></section>`;
-  }
+  // sıra: videolar, fotoğraflar, Vikipedi, geçmişte bugün, sonra klasörler/müzik/belgeler
+  if (v.devam.length) h += `<section class="bolum"><div class="bolum-bas"><h2>İzlemeye devam et</h2></div><div class="yatay">${v.devam.map(vkart).join("")}</div></section>`;
+  if (v.onerilen.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Senin için önerilen videolar</h2><a href="#/videolar">Tümünü gör</a></div><div class="izgara">${v.onerilen.slice(0, 8).map(vkart).join("")}</div></section>`;
+  if (v.fotolar.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Son fotoğraflar</h2><a href="#/fotograflar">Tümünü gör</a></div><div class="yatay" id="anaFotolar">${v.fotolar.map((m, i) => `<a class="foto-izgara-tek" href="javascript:void(0)" data-i="${i}"><img loading="lazy" src="/kucuk/${m.id}" alt=""></a>`).join("")}</div></section>`;
+  if (kesfet.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Vikipedi'den bugün</h2><a href="#/wiki">Keşfetmeye devam et</a></div><div class="makale-izgara">${kesfet.map((o, i) => makaleKart(o, i === 0)).join("")}</div></section>`;
+  if (gecmis.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Geçmişte bugün</h2><a href="#/gecmis">Tümünü gör (${gecmis.reduce((t, g) => t + (g.toplam || g.ogeler.length), 0)})</a></div>${gecmisOzet(gecmis)}</section>`;
   if (kok.klasorler.length) {
     const son = [...kok.klasorler].sort((a, b) => b.son - a.son);
     h += `<section class="bolum"><div class="bolum-bas"><h2>Klasörlerin</h2><a href="#/klasorler">Tümünü gör (${kok.klasorler.length})</a></div>
       <div class="kizgara">${son.slice(0, 12).map(klasorKart).join("")}</div></section>`;
   }
-  if (v.devam.length) h += `<section class="bolum"><div class="bolum-bas"><h2>İzlemeye devam et</h2></div><div class="yatay">${v.devam.map(vkart).join("")}</div></section>`;
-  if (v.onerilen.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Senin için önerilen videolar</h2><a href="#/videolar">Tümünü gör</a></div><div class="izgara">${v.onerilen.slice(0, 8).map(vkart).join("")}</div></section>`;
-  if (kesfet.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Vikipedi'den bugün</h2><a href="#/wiki">Keşfetmeye devam et</a></div><div class="makale-izgara">${kesfet.map((o, i) => makaleKart(o, i === 0)).join("")}</div></section>`;
-  if (v.fotolar.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Son fotoğraflar</h2><a href="#/fotograflar">Tümünü gör</a></div><div class="yatay" id="anaFotolar">${v.fotolar.map((m, i) => `<a class="foto-izgara-tek" href="javascript:void(0)" data-i="${i}"><img loading="lazy" src="/kucuk/${m.id}" alt=""></a>`).join("")}</div></section>`;
   if (v.muzik.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Müzik</h2><a href="#/muzik">Kütüphaneyi aç</a></div><div class="parca-liste" id="anaMuzik">${v.muzik.slice(0, 5).map((m, i) => parcaSatir(m, i)).join("")}</div></section>`;
   if (v.belgeler.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Belgeler</h2><a href="#/belgeler">Tümünü gör</a></div><div class="belge-izgara">${v.belgeler.map(belgeKart).join("")}</div></section>`;
   if (!s.video && !s.foto && !s.muzik && !s.belge && !DURUM.wikiVar) {
@@ -489,10 +512,7 @@ async function sayfaAna() {
   sayfa.innerHTML = h + "</div>";
   $("#kahramanForm").onsubmit = (e) => { e.preventDefault(); const q = $("#kahramanKutu").value.trim(); if (q) location.hash = "#/ara?q=" + encodeURIComponent(q); };
   oneriBagla($("#kahramanKutu"));
-  $$(".gecmis-seri").forEach((el) => {
-    const g = gecmis.find((x) => x.yil === +el.dataset.yil);
-    el.addEventListener("click", (e) => { const a = e.target.closest("[data-ani]"); if (!a) return; const fotolar = g.ogeler.filter((x) => x.tur === "foto"); isikKutuAc(fotolar, fotolar.findIndex((x) => x.id === +a.dataset.ani)); });
-  });
+  gecmisBagla(sayfa, gecmis);
   $("#anaFotolar")?.addEventListener("click", (e) => { const a = e.target.closest("[data-i]"); if (a) isikKutuAc(v.fotolar, +a.dataset.i); });
   muzikListeBagla($("#anaMuzik"), v.muzik.slice(0, 5));
   belgeBagla(sayfa);
