@@ -6,3 +6,4 @@ beautifulsoup4>=4.12
 mutagen>=1.47
 pypdfium2>=4.0
 imageio-ffmpeg>=0.5
+pillow-heif>=0.18

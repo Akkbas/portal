@@ -70,7 +70,7 @@ else { Write-Host "  Not: .zim dosyanı 'Vikipedi' klasörüne koymayı unutma."
 
 # 4) Deneme
 Baslik "Kurulum test ediliyor"
-& (Join-Path $PyDir "python.exe") -c "import flask, waitress, libzim, PIL, bs4, mutagen, pypdfium2, imageio_ffmpeg, sqlite3; print('  Tüm bileşenler hazır.')"
+& (Join-Path $PyDir "python.exe") -c "import flask, waitress, libzim, PIL, bs4, mutagen, pypdfium2, imageio_ffmpeg, sqlite3, pillow_heif; print('  Tüm bileşenler hazır.')"
 if ($LASTEXITCODE -ne 0) { throw "Bileşen testi başarısız." }
 
 Write-Host ""

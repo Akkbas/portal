@@ -13,13 +13,23 @@ import hashlib
 import threading
 import subprocess
 
+# iPhone fotoğrafları (HEIC/HEIF) için: pillow-heif kuruluysa Pillow bu biçimleri açabilir
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    HEIF_VAR = True
+except Exception:
+    HEIF_VAR = False
+
 UZANTILAR = {
     "video": {".mp4", ".m4v", ".mkv", ".webm", ".mov", ".avi", ".wmv", ".flv", ".mpg", ".mpeg", ".ts", ".m2ts", ".3gp", ".ogv"},
-    "foto": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".jfif"},
+    "foto": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tif", ".tiff", ".heic", ".heif", ".avif", ".jfif"},
     "muzik": {".mp3", ".m4a", ".aac", ".flac", ".wav", ".ogg", ".opus", ".wma", ".alac"},
     "belge": {".pdf", ".txt", ".md", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods",
               ".odp", ".rtf", ".csv", ".epub", ".html", ".htm", ".json", ".xml"},
 }
+# tarayıcının doğrudan gösterebildiği fotoğraf biçimleri; diğerleri (HEIC, TIFF) JPEG'e çevrilerek gösterilir
+TARAYICI_FOTO = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif", ".jfif"}
 TARAYICI_VIDEO = {".mp4", ".m4v", ".webm", ".mov", ".ogv"}
 ATLA = {"portal", "windowsapps", "msocache", "$windows.~ws", "$sysreset", "system volume information", "$recycle.bin", "recycler", ".trash", ".trashes",
         ".spotlight-v100", ".fseventsd", "found.000", "$windows.~bt"}
@@ -73,6 +83,7 @@ class Kutuphane:
         # Böylece sayfa istekleri küçük resim kuyruğunun arkasında kalmaz.
         self.bekleyen = threading.BoundedSemaphore(6)
         self.ffmpeg = self._ffmpeg_bul()
+        self.okuma_hatalari = []   # diskten okunamayan dosyalar (disk sağlığı için)
         self._sema()
 
     # ---------- veritabanı ----------
@@ -155,6 +166,24 @@ class Kutuphane:
         c.commit()
         self._ozel_adlari_uygula()
         self._etiketleri_yukle()
+        self._heic_hazirla()
+
+    def _heic_hazirla(self):
+        """HEIC desteği sonradan kurulduysa, daha önce "açılamadı" diye işaretlenen
+        HEIC fotoğrafların küçük resimlerini ve tarihlerini yeniden dene."""
+        isaret = os.path.join(self.veri, "heic-destek")
+        if not HEIF_VAR or os.path.exists(isaret):
+            return
+        c = self.db()
+        ids = [r[0] for r in c.execute("SELECT id FROM medya WHERE uzanti IN ('.heic', '.heif')")]
+        for mid in ids:
+            try:
+                os.remove(self._kucuk_yolu(mid) + ".yok")
+            except OSError:
+                pass
+        c.execute("UPDATE medya SET genislik=NULL WHERE uzanti IN ('.heic', '.heif') AND genislik=0")
+        c.commit()
+        open(isaret, "w").close()
 
     # ---------- etiketler ----------
     # Etiketler Portal\veri\etiketler.json dosyasında saklanır (dosyalara dokunulmaz).
@@ -544,7 +573,32 @@ class Kutuphane:
         self._ozel_adlari_uygula()
         self.tarama.update(durum="tamam", bulunan=len(gorulen), son=time.time(), yeni=yeni, silinen=len(silinen))
         print("Tarama bitti: %d dosya (%d yeni, %d kaldırıldı)" % (len(gorulen), yeni, len(silinen)))
-        threading.Thread(target=self._fotograf_tarihleri, daemon=True).start()
+        threading.Thread(target=self._tarih_taramasi, daemon=True).start()
+
+    def _tarih_taramasi(self):
+        self._fotograf_tarihleri()
+        self._video_tarihleri()
+
+    def _video_tarihleri(self):
+        """Videoların gerçek çekim tarihini (telefonların yazdığı creation_time) okur.
+        Takvim ve "Geçmişte bugün" için önemlidir; yoksa dosya tarihi kullanılır."""
+        if not self.ffmpeg:
+            return
+        c = self.db()
+        satirlar = c.execute("SELECT id,yol FROM medya WHERE tur='video' AND genislik IS NULL").fetchall()
+        for i, r in enumerate(satirlar):
+            try:
+                b = self.video_bilgi(self.tam_yol(r["yol"]))
+                c.execute("UPDATE medya SET genislik=?, yukseklik=?, sure=COALESCE(sure, ?) WHERE id=?",
+                          (b.get("genislik") or -1, b.get("yukseklik") or -1, b.get("sure"), r["id"]))
+                if b.get("cekim"):
+                    c.execute("UPDATE medya SET tarih=? WHERE id=?", (b["cekim"], r["id"]))
+            except Exception:
+                c.execute("UPDATE medya SET genislik=-1 WHERE id=?", (r["id"],))
+            if i % 25 == 0:
+                c.commit()
+            time.sleep(0.02)
+        c.commit()
 
     def _fotograf_tarihleri(self):
         """Fotoğrafların EXIF çekim tarihini okur (sıralama için)."""
@@ -609,14 +663,22 @@ class Kutuphane:
             if d["tur"] == "muzik":
                 d["baslik"] = d["ozel_ad"]
         d["oynatilabilir"] = d.get("uzanti") in TARAYICI_VIDEO if d["tur"] == "video" else True
+        if d["tur"] == "foto":
+            d["tarayici_gosterir"] = d.get("uzanti") in TARAYICI_FOTO
         return d
 
-    def liste(self, tur, sira="yeni", klasor=None, bas=0, adet=60, ara=None, etiketler=None):
+    def liste(self, tur, sira="yeni", klasor=None, bas=0, adet=60, ara=None, etiketler=None, t1=None, t2=None):
         sql = "SELECT m.*, i.konum, i.sure AS izleme_sure FROM medya m LEFT JOIN izleme i ON i.id=m.id WHERE m.tur=?"
         p = [tur]
         if tur == "hepsi":
             sql = sql.replace("WHERE m.tur=?", "WHERE 1=1")
             p = []
+        if t1 is not None:
+            sql += " AND m.tarih >= ?"
+            p.append(t1)
+        if t2 is not None:
+            sql += " AND m.tarih < ?"
+            p.append(t2)
         for e in etiketler or []:
             # birden çok etiket seçilirse hepsini taşıyanlar gelir
             sql += " AND m.yol IN (SELECT yol FROM etiket WHERE ad=?)"
@@ -636,6 +698,54 @@ class Kutuphane:
         sql += " ORDER BY " + sira_sql + " LIMIT ? OFFSET ?"
         p += [adet, bas]
         return [self.satir(r) for r in self.db().execute(sql, p)]
+
+    # ---------- takvim ve geçmişte bugün ----------
+    def takvim(self):
+        sql = """SELECT CAST(strftime('%Y', tarih, 'unixepoch', 'localtime') AS INTEGER) yil,
+                        CAST(strftime('%m', tarih, 'unixepoch', 'localtime') AS INTEGER) ay,
+                        SUM(tur='foto') foto, SUM(tur='video') video,
+                        MAX(CASE WHEN tur='foto' THEN id END) kapak_foto, MAX(CASE WHEN tur='video' THEN id END) kapak_video
+                 FROM medya WHERE tur IN ('foto','video') AND tarih IS NOT NULL
+                 GROUP BY yil, ay ORDER BY yil DESC, ay DESC"""
+        return [{**dict(r), "kapak": r["kapak_foto"] or r["kapak_video"]} for r in self.db().execute(sql)]
+
+    def gecmiste_bugun(self, ay=None, gun=None, adet=40):
+        """Önceki yıllarda bugünün tarihinde çekilmiş fotoğraf ve videolar (yıl yıl)."""
+        bugun = time.localtime()
+        ay, gun = ay or bugun.tm_mon, gun or bugun.tm_mday
+        sql = """SELECT * FROM medya WHERE tur IN ('foto','video')
+                 AND strftime('%m-%d', tarih, 'unixepoch', 'localtime') = ?
+                 AND CAST(strftime('%Y', tarih, 'unixepoch', 'localtime') AS INTEGER) < ?
+                 ORDER BY tarih DESC"""
+        yillar = {}
+        for r in self.db().execute(sql, ("%02d-%02d" % (ay, gun), bugun.tm_year)):
+            y = time.localtime(r["tarih"]).tm_year
+            l = yillar.setdefault(y, [])
+            if len(l) < adet:
+                l.append(self.satir(r))
+        return [{"yil": y, "once": bugun.tm_year - y, "ogeler": l} for y, l in sorted(yillar.items(), reverse=True)]
+
+    def buyuk_goruntu(self, mid):
+        """Tarayıcının açamadığı fotoğraflar (HEIC, TIFF) için ekrana uygun JPEG üretir (önbellekli)."""
+        dizin = os.path.join(self.veri, "buyuk")
+        os.makedirs(dizin, exist_ok=True)
+        hedef = os.path.join(dizin, "%d.jpg" % mid)
+        if os.path.exists(hedef):
+            return hedef
+        m = self.al(mid)
+        if not m:
+            return None
+        from PIL import Image, ImageOps
+        with self.uretim_kilit:
+            with Image.open(self.tam_yol(m["yol"])) as im:
+                im = ImageOps.exif_transpose(im)
+                if im.mode not in ("RGB", "L"):
+                    im = im.convert("RGB")
+                im.thumbnail((2560, 2560))
+                gecici = hedef + ".tmp"
+                im.save(gecici, "JPEG", quality=88)
+                os.replace(gecici, hedef)
+        return hedef
 
     def say(self, tur):
         return self.db().execute("SELECT COUNT(*) FROM medya WHERE tur=?", (tur,)).fetchone()[0]
@@ -799,6 +909,8 @@ class Kutuphane:
                     ok = self._pdf_kucuk(kaynak, hedef)
             except Exception as ex:
                 print("küçük resim hatası", m["yol"], ex)
+                if isinstance(ex, OSError) and (getattr(ex, "winerror", None) in (23, 1117, 483) or getattr(ex, "errno", None) == 5):
+                    self.okuma_hatalari.append({"yol": m["yol"], "hata": str(ex), "zaman": time.time()})
                 ok = False
             if not ok:
                 open(hedef + ".yok", "w").close()
@@ -843,6 +955,16 @@ class Kutuphane:
             a = re.search(r"Stream #\S+.*?: Audio: (\w+)", cikti)
             bilgi["video"] = v.group(1) if v else None
             bilgi["ses"] = a.group(1) if a else None
+            boy = re.search(r"Video: .*?, (\d{2,5})x(\d{2,5})", cikti)
+            if boy:
+                bilgi["genislik"], bilgi["yukseklik"] = int(boy.group(1)), int(boy.group(2))
+            ct = re.search(r"creation_time\s*:\s*(\d{4})-(\d\d)-(\d\d)[T ](\d\d):(\d\d):(\d\d)", cikti)
+            if ct:
+                import calendar
+                y = int(ct.group(1))
+                if 1995 <= y <= time.localtime().tm_year:
+                    # creation_time UTC'dir
+                    bilgi["cekim"] = float(calendar.timegm(tuple(int(ct.group(k)) for k in range(1, 7)) + (0, 0, 0)))
         except Exception:
             pass
         return bilgi

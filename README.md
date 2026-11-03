@@ -82,7 +82,10 @@ E:\
 | 🖼️ **Fotoğraflar** | Çekim tarihine göre zaman çizelgesi, klasör albümleri, tam ekran görüntüleyici ve slayt gösterisi. |
 | 🎵 **Müzik** | Albüm kapakları ve etiketlerle liste; sayfalar arasında çalmaya devam eden alt çalar, karışık çalma. |
 | 📄 **Belgeler** | PDF önizleme kapakları; PDF ve metin dosyaları tarayıcıda açılır, Word/Excel bilgisayardaki programla. |
-| 🏷️ **Etiketler** | Videolara ve fotoğraflara kendi etiketlerini ekle (ör. *Zara*, *Doğum günü*); birden fazla etiket seçilebilir. Aramada etiket adını yazınca o dosyalar gelir. Etiket sayfasında birkaç etiketle birlikte filtrele; etiketleri yeniden adlandır ya da sil. |
+| 🗓️ **Takvim ve Geçmişte bugün** | Fotoğraf ve videolar çekildikleri aya göre; ay sayfasında günlere ayrılmış takvim. Ana sayfada "3 yıl önce bugün" anıları. Videolarda telefonun kaydettiği çekim tarihi kullanılır. |
+| 📱 **iPhone fotoğrafları** | HEIC/HEIF fotoğraflar küçük resimleriyle görünür ve tarayıcıda açılır (otomatik JPEG'e çevrilir). |
+| 🩺 **Disk sağlığı** | Windows'un disk sağlık durumu, sıcaklık ve hata sayaçları (disk izin verirse); tüm dosyaları okuyup bozulanları bulan okunabilirlik kontrolü ve okuma hızı. Sorun varsa ana sayfada uyarı. |
+| 🏷️ **Etiketler** | Videolara ve fotoğraflara kendi etiketlerini ekle (ör. *Zara*, *Doğum günü*). Etiketi olmayan her video ve fotoğrafın altında tüm etiketlerin tek tıkla seçilecek şekilde durur; seçince kaybolur. Birden fazla etiket eklenebilir. Aramada etiket adını yazınca o dosyalar gelir. Etiket sayfasında birkaç etiketle birlikte filtrele; etiketleri yeniden adlandır ya da sil. |
 | ✏️ **Ad ver, sil** | Video, fotoğraf, şarkı ve belgelerin adını kalem simgesiyle ya da çift tıklayarak değiştir; aramada bu adla bulursun (dosya adı değişmez). Çöp kutusu simgesiyle sil; çöp kutusundan geri al. |
 | 🗂️ **Tüm dosyalar** | Diskin tamamı için salt okunur dosya gezgini. |
 | 🔌 **Tak-çalıştır** | Disk takılınca otomatik açılır. "Güvenle çıkar" düğmesiyle kapanır. |

@@ -109,6 +109,8 @@ app.json.ensure_ascii = False
 
 kutup = Kutuphane(KOK, VERI, AYAR)
 viki = Vikipedi(KOK, AYAR.get("vikipedi_klasorleri", []))
+from saglik import DiskSagligi
+saglik = DiskSagligi(KOK, kutup)
 
 
 BOS_GIF = bytes.fromhex("47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b")
@@ -162,7 +164,9 @@ def medya_liste():
         tur, request.args.get("sira", "yeni"), request.args.get("klasor") or None,
         int(request.args.get("bas", 0)), min(int(request.args.get("adet", 60)), 500),
         request.args.get("ara") or None,
-        [e for e in request.args.getlist("etiket") if e]))
+        [e for e in request.args.getlist("etiket") if e],
+        float(request.args["t1"]) if request.args.get("t1") else None,
+        float(request.args["t2"]) if request.args.get("t2") else None))
 
 
 @app.route("/api/medya/<int:mid>")
@@ -315,6 +319,46 @@ def dosya(mid):
     return send_file(tam, conditional=True, max_age=3600,
                      as_attachment=request.args.get("indir") == "1",
                      download_name=os.path.basename(tam))
+
+
+@app.route("/goruntu/<int:mid>")
+def goruntu(mid):
+    """Fotoğrafı tam boyda verir; tarayıcının açamadığı biçimleri (HEIC vb.) JPEG'e çevirir."""
+    from kutuphane import TARAYICI_FOTO
+    m = kutup.al(mid)
+    if not m:
+        abort(404)
+    if m["uzanti"] in TARAYICI_FOTO:
+        return send_file(kutup.tam_yol(m["yol"]), conditional=True, max_age=3600)
+    try:
+        y = kutup.buyuk_goruntu(mid)
+    except Exception as ex:
+        print("görüntü çevrilemedi", m["yol"], ex)
+        abort(415)
+    return send_file(y, mimetype="image/jpeg", max_age=86400)
+
+
+@app.route("/api/takvim")
+def takvim():
+    return jsonify(kutup.takvim())
+
+
+@app.route("/api/gecmiste-bugun")
+def gecmiste_bugun():
+    return jsonify(kutup.gecmiste_bugun())
+
+
+@app.route("/api/saglik")
+def saglik_bilgi():
+    return jsonify(saglik.durum(yenile=request.args.get("yenile") == "1"))
+
+
+@app.route("/api/saglik/kontrol", methods=["POST"])
+def saglik_kontrol():
+    if not yerel_istek():
+        abort(403)
+    saglik.kontrol_baslat()
+    return jsonify({"ok": True})
 
 
 @app.route("/akis/<int:mid>")
