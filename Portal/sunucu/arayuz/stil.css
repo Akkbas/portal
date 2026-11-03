@@ -167,7 +167,9 @@ h1.sayfa-baslik { font-family: var(--baslik-yazi); font-size: 28px; letter-spaci
 
 /* ---------- ışık kutusu ---------- */
 .isik-kutu { position: fixed; inset: 0; background: rgba(8,8,8,.96); z-index: 100; display: grid; place-items: center; color: #fff; }
-.isik-kutu img { max-width: calc(100vw - 140px); max-height: calc(100vh - 110px); object-fit: contain; border-radius: 4px; box-shadow: 0 10px 50px rgba(0,0,0,.6); }
+.ik-sahne { display: grid; place-items: center; }
+.ik-sahne > * { grid-area: 1 / 1; }
+.isik-kutu img, .isik-kutu video { max-width: calc(100vw - 140px); max-height: calc(100vh - 150px); object-fit: contain; border-radius: 4px; box-shadow: 0 10px 50px rgba(0,0,0,.6); }
 .isik-kutu .ikon-btn { position: absolute; color: #fff; background: rgba(255,255,255,.08); width: 48px; height: 48px; }
 .isik-kutu .ikon-btn:hover { background: rgba(255,255,255,.18); }
 .ik-kapat { top: 18px; right: 18px; }
@@ -522,3 +524,8 @@ label.cip { cursor: pointer; }
 .ana-fotolar { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
 .kalkiyor { transition: opacity .3s, transform .3s; opacity: 0; transform: scale(.94); }
 #ikEtiket .etiket-duzenle-btn { color: #bbb; }
+
+/* canlı fotoğraf */
+.canli-rozet { position: absolute; left: 6px; top: 6px; display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px 2px 4px; border-radius: 6px; background: rgba(0,0,0,.55); color: #fff; font-size: 10px; font-weight: 800; letter-spacing: .06em; backdrop-filter: blur(4px); pointer-events: none; }
+.canli-rozet svg { width: 13px; height: 13px; stroke-width: 1.6; }
+.ani .canli-rozet { padding: 3px; }

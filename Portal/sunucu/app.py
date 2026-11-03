@@ -38,6 +38,7 @@ VARSAYILAN_AYARLAR = {
     "tarayiciyi_ac": True,
     "uygulama_penceresi": False,
     "sadece_kategori_klasorleri": False,
+    "canli_sure": 4.0,
     "klasorler": {
         "video": ["Videolar", "Video", "Videos", "Filmler", "Diziler", "Belgeseller"],
         "foto": ["Fotoğraflar", "Fotograflar", "Fotolar", "Resimler", "Photos", "Pictures"],

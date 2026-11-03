@@ -406,7 +406,7 @@ function gecmisOzet(gecmis) {
 function gecmisBagla(kap, gecmis) {
   $$(".gecmis-seri", kap).forEach((el) => {
     const g = gecmis.find((x) => x.yil === +el.dataset.yil);
-    el.addEventListener("click", (e) => { const a = e.target.closest("[data-ani]"); if (!a) return; const fotolar = g.ogeler.filter((x) => x.tur === "foto"); isikKutuAc(fotolar, fotolar.findIndex((x) => x.id === +a.dataset.ani)); });
+    el.addEventListener("click", (e) => { const a = e.target.closest("[data-ani]"); if (!a) return; const fotolar = g.ogeler.filter((x) => gorunenTur(x) === "foto"); isikKutuAc(fotolar, fotolar.findIndex((x) => x.id === +a.dataset.ani)); });
   });
 }
 async function sayfaGecmis(_, q) {
@@ -422,11 +422,13 @@ async function sayfaGecmis(_, q) {
   if (q.get("y")) setTimeout(() => document.getElementById("y" + q.get("y"))?.scrollIntoView({ behavior: "smooth" }), 100);
 }
 function aniKart(m) {
-  if (m.tur === "video") return `<a class="ani" href="#/izle/${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this, true)"><span class="ani-video">${IKON.oynat}</span></a>`;
-  return `<a class="ani" href="javascript:void(0)" data-ani="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this, true)"></a>`;
+  if (gorunenTur(m) === "video") return `<a class="ani" href="#/izle/${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this, true)"><span class="ani-video">${IKON.oynat}</span></a>`;
+  return `<a class="ani" href="javascript:void(0)" data-ani="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this, true)">${m.canli_video ? `<span class="canli-rozet">${CANLI}</span>` : ""}</a>`;
 }
+const CANLI = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6" class="dolu"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="9.5" stroke-dasharray="1.6 2.2"/></svg>';
+const gorunenTur = (m) => m.gtur || m.tur;
 function fotoKucuk(m, i) {
-  return `<a href="javascript:void(0)" data-i="${i}" data-id="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="${esc(m.ad)}" onerror="kucukHata(this, true)">${fotoEtiket(m)}</a>`;
+  return `<a href="javascript:void(0)" data-i="${i}" data-id="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="${esc(m.ad)}" onerror="kucukHata(this, true)">${m.canli_video ? `<span class="canli-rozet" title="Canlı fotoğraf">${CANLI}CANLI</span>` : ""}${fotoEtiket(m)}</a>`;
 }
 function bosEkran(ikon, baslik, metin) {
   return `<div class="bos">${ikon}<h3>${baslik}</h3><p>${metin}</p></div>`;
@@ -786,18 +788,54 @@ function isikKutuAc(liste, i, slayt = false) {
 function isikKutuGoster() {
   const m = IK.liste[IK.i];
   if (!m) return;
-  const img = $("#ikResim");
-  img.src = "/kucuk/" + m.id;
-  const tam = new Image();
-  tam.onload = () => { if (IK.liste[IK.i] === m) img.src = tam.src; };
-  tam.src = "/goruntu/" + m.id;
+  const img = $("#ikResim"), vid = $("#ikVideo"), dugme = $("#ikCanli");
+  vid.pause();
+  vid.hidden = true;
+  vid.onended = null;
+  dugme.hidden = !m.canli_video;
+  if (m.tur === "video") {
+    // eşi olmayan canlı fotoğraf videosu: sürekli döngüde oynar
+    img.hidden = true;
+    vid.style.width = vid.style.height = vid.style.objectFit = "";
+    vid.hidden = false;
+    vid.loop = true;
+    vid.muted = true;
+    vid.poster = "/kucuk/" + m.id;
+    vid.src = "/dosya/" + m.id;
+    vid.play().catch(() => {});
+  } else {
+    img.hidden = false;
+    img.src = "/kucuk/" + m.id;
+    const tam = new Image();
+    tam.onload = () => { if (IK.liste[IK.i] === m) img.src = tam.src; };
+    tam.src = "/goruntu/" + m.id;
+    if (m.canli_video) {
+      // canlı fotoğraf: açılınca hareketi bir kez oynat, sonra fotoğrafa dön
+      vid.loop = false;
+      vid.muted = true;
+      vid.src = "/dosya/" + m.canli_video;
+      canliOynat(true);
+    }
+  }
   $("#ikBilgi").innerHTML = `${IK.i + 1} / ${IK.liste.length} · ${adAlani(m)} · ${tarihFmt(m.tarih)}`;
   $("#ikEtiket").innerHTML = etiketSatiri(m);
   // sonrakini önceden yükle
   const s = IK.liste[IK.i + 1];
   if (s) new Image().src = "/goruntu/" + s.id;
 }
-function isikKutuKapat() { $("#isikKutu").hidden = true; document.body.style.overflow = ""; slaytDurum(false); $("#ikResim").src = ""; }
+function canliOynat(sessiz = true) {
+  const m = IK.liste[IK.i], vid = $("#ikVideo");
+  if (!m?.canli_video || m.tur === "video") return;
+  const img = $("#ikResim");
+  // hareketli kısım fotoğrafın tam üstüne, aynı boyutta oynar
+  if (img.clientWidth) { vid.style.width = img.clientWidth + "px"; vid.style.height = img.clientHeight + "px"; vid.style.objectFit = "cover"; }
+  vid.muted = sessiz;
+  vid.currentTime = 0;
+  vid.hidden = false;
+  vid.onended = () => { vid.hidden = true; };
+  vid.play().catch(() => { vid.hidden = true; });
+}
+function isikKutuKapat() { $("#isikKutu").hidden = true; document.body.style.overflow = ""; slaytDurum(false); $("#ikResim").src = ""; const v = $("#ikVideo"); v.pause(); v.removeAttribute("src"); v.load(); v.hidden = true; }
 function ikGit(d) { IK.i = (IK.i + d + IK.liste.length) % IK.liste.length; isikKutuGoster(); }
 function slaytDurum(ac) {
   clearInterval(IK.slayt); IK.slayt = null;
@@ -808,6 +846,8 @@ $(".ik-kapat").onclick = isikKutuKapat;
 $(".ik-onceki").onclick = () => ikGit(-1);
 $(".ik-sonraki").onclick = () => ikGit(1);
 $("#ikSlayt").onclick = () => slaytDurum(!IK.slayt);
+$("#ikCanli").onclick = () => canliOynat(false);
+$(".ik-sahne").addEventListener("mouseenter", () => { const v = $("#ikVideo"); if (v.hidden || v.ended) canliOynat(true); });
 $("#ikKlasor").onclick = () => post("/api/ac", { yol: IK.liste[IK.i].yol, klasorde: true });
 $("#isikKutu").addEventListener("click", (e) => { if (e.target.id === "isikKutu") isikKutuKapat(); });
 document.addEventListener("keydown", (e) => {
@@ -1221,7 +1261,7 @@ async function takvimAy(yil, ay) {
       ${fotolar.length ? `<button class="kucuk-btn vurgulu" id="aySlayt">${IKON.oynat}Slayt gösterisi</button>` : ""}</div>
     <div class="ay-takvim">${takvimIzgara(yil, ay, gunler)}</div>
     <div id="gunler">${[...gunler].map(([g, l]) => `<section class="bolum gun" id="gun-${g}"><div class="bolum-bas"><h2>${new Date(yil, ay - 1, g).toLocaleDateString("tr-TR", { weekday: "long", day: "numeric", month: "long" })}</h2><span style="color:var(--metin-2);font-size:14px">${l.length} anı</span></div>
-      <div class="foto-izgara">${l.map((m) => m.tur === "video" ? `<a href="#/izle/${m.id}" class="gun-video"><img loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this, true)"><span class="ani-video">${IKON.oynat}${m.sure ? sureFmt(m.sure) : ""}</span>${fotoEtiket(m)}</a>` : fotoKucuk(m, fotolar.indexOf(m))).join("")}</div></section>`).join("")}</div></div>`;
+      <div class="foto-izgara">${l.map((m) => gorunenTur(m) === "video" ? `<a href="#/izle/${m.id}" class="gun-video"><img loading="lazy" src="/kucuk/${m.id}" alt="" onerror="kucukHata(this, true)"><span class="ani-video">${IKON.oynat}${m.sure ? sureFmt(m.sure) : ""}</span>${fotoEtiket(m)}</a>` : fotoKucuk(m, fotolar.indexOf(m))).join("")}</div></section>`).join("")}</div></div>`;
   $("#gunler").addEventListener("click", (e) => { const a = e.target.closest("[data-i]"); if (a) isikKutuAc(fotolar, +a.dataset.i); });
   $("#aySlayt")?.addEventListener("click", () => isikKutuAc(fotolar, 0, true));
   $$(".takvim-gun[data-gun]").forEach((g) => (g.onclick = () => document.getElementById("gun-" + g.dataset.gun)?.scrollIntoView({ behavior: "smooth" })));

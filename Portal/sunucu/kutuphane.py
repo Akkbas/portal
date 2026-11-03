@@ -171,6 +171,15 @@ class Kutuphane:
         sutunlar = [r[1] for r in c.execute("PRAGMA table_info(medya)")]
         if "ozel_ad" not in sutunlar:
             c.execute("ALTER TABLE medya ADD COLUMN ozel_ad TEXT")
+        # gtur: dosyanın Portal'da görüneceği bölüm. Canlı Fotoğraf videoları (2-3 sn)
+        # fotoğraf bölümünde gösterilir ("foto") ya da eşinin içinde saklanır ("gizli").
+        # canli: fotoğrafta eşi olan videonun id'si; videoda eşi olan fotoğrafın id'si.
+        if "gtur" not in sutunlar:
+            c.execute("ALTER TABLE medya ADD COLUMN gtur TEXT")
+        if "canli" not in sutunlar:
+            c.execute("ALTER TABLE medya ADD COLUMN canli INTEGER")
+        c.execute("UPDATE medya SET gtur=tur WHERE gtur IS NULL")
+        c.execute("CREATE INDEX IF NOT EXISTS ix_gtur ON medya(gtur)")
         c.executescript("""
         CREATE TABLE IF NOT EXISTS etiket(yol TEXT NOT NULL, ad TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS ix_etiket_ad ON etiket(ad);
@@ -180,6 +189,37 @@ class Kutuphane:
         self._ozel_adlari_uygula()
         self._etiketleri_yukle()
         self._heic_hazirla()
+        self.canli_eslestir()
+
+    def canli_eslestir(self):
+        """iPhone Canlı Fotoğrafları: aynı klasörde aynı adı taşıyan fotoğraf + kısa video
+        (ör. IMG_1234.HEIC + IMG_1234.MOV) tek bir canlı fotoğraf sayılır; video ayrıca
+        listelenmez. Eşi bulunamayan çok kısa videolar da fotoğraflar arasında gösterilir.
+        Diskteki dosyalara dokunulmaz."""
+        sinir = float(self.ayarlar.get("canli_sure", 4.0))
+        c = self.db()
+        kisa = c.execute("SELECT id, yol, klasor FROM medya WHERE tur='video' AND sure IS NOT NULL AND sure <= ?",
+                         (sinir,)).fetchall()
+        fotolar = {}
+        for r in c.execute("SELECT id, yol, klasor FROM medya WHERE tur='foto'"):
+            govde = os.path.splitext(os.path.basename(r["yol"]))[0].lower()
+            fotolar[(r["klasor"], govde)] = r["id"]
+        foto_es, video_gtur = [], []
+        for r in kisa:
+            govde = os.path.splitext(os.path.basename(r["yol"]))[0].lower()
+            es = fotolar.get((r["klasor"], govde))
+            if es:
+                foto_es.append((r["id"], es))
+                video_gtur.append(("gizli", es, r["id"]))
+            else:
+                video_gtur.append(("foto", None, r["id"]))
+
+        def yaz(c):
+            c.execute("UPDATE medya SET gtur=tur, canli=NULL WHERE canli IS NOT NULL OR gtur<>tur")
+            c.executemany("UPDATE medya SET canli=? WHERE id=?", foto_es)
+            c.executemany("UPDATE medya SET gtur=?, canli=? WHERE id=?", video_gtur)
+        self._kisa_yaz(yaz)
+        return {"esli": len(foto_es), "tek": len(video_gtur) - len(foto_es)}
 
     def _heic_hazirla(self):
         """HEIC desteği sonradan kurulduysa, daha önce "açılamadı" diye işaretlenen
@@ -362,6 +402,10 @@ class Kutuphane:
             os.makedirs(hedef_kok, exist_ok=True)
             # videonun yanındaki altyazı dosyaları da birlikte taşınır
             ekler = [kaynak]
+            if m["tur"] == "foto" and m.get("canli"):
+                es = self.db().execute("SELECT yol FROM medya WHERE id=?", (m["canli"],)).fetchone()
+                if es and os.path.isfile(self.tam_yol(es["yol"])):
+                    ekler.append(self.tam_yol(es["yol"]))
             if m["tur"] == "video":
                 govde = os.path.splitext(kaynak)[0]
                 ekler += [govde + u for u in (".srt", ".vtt", ".tr.srt", ".tur.srt") if os.path.isfile(govde + u)]
@@ -374,6 +418,9 @@ class Kutuphane:
                           "tarih": time.time(), "dosyalar": tasinan, "ozel_ad": m.get("ozel_ad")})
             self._cop_yaz(liste)
         c = self.db()
+        if m["tur"] == "foto" and m.get("canli"):
+            c.execute("DELETE FROM medya WHERE id=?", (m["canli"],))
+            self._kucuk_sil(m["canli"])
         c.execute("DELETE FROM medya WHERE id=?", (mid,))
         c.execute("DELETE FROM izleme WHERE id=?", (mid,))
         c.commit()
@@ -562,7 +609,7 @@ class Kutuphane:
                         kayit.update(self._muzik_etiket(tam))
                     if eski:
                         c.execute("""UPDATE medya SET tur=:tur, ad=:ad, klasor=:klasor, uzanti=:uzanti,
-                                     boyut=:boyut, mtime=:mtime, tarih=:tarih, sure=NULL,
+                                     boyut=:boyut, mtime=:mtime, tarih=:tarih, sure=NULL, gtur=:tur, canli=NULL,
                                      sanatci=:sanatci, album=:album, baslik=:baslik WHERE yol=:yol""",
                                   {**{"sanatci": None, "album": None, "baslik": None}, **kayit})
                         self._kucuk_sil(eski[0])
@@ -571,9 +618,9 @@ class Kutuphane:
                         kayit.setdefault("album", None)
                         kayit.setdefault("baslik", None)
                         kayit.setdefault("sure", None)
-                        c.execute("""INSERT INTO medya(yol,tur,ad,klasor,uzanti,boyut,mtime,tarih,eklenme,
+                        c.execute("""INSERT INTO medya(yol,tur,gtur,ad,klasor,uzanti,boyut,mtime,tarih,eklenme,
                                      sanatci,album,baslik,sure)
-                                     VALUES(:yol,:tur,:ad,:klasor,:uzanti,:boyut,:mtime,:tarih,:eklenme,
+                                     VALUES(:yol,:tur,:tur,:ad,:klasor,:uzanti,:boyut,:mtime,:tarih,:eklenme,
                                      :sanatci,:album,:baslik,:sure)""", kayit)
                         yeni += 1
                     if time.time() - son_kayit > 0.4:
@@ -586,6 +633,7 @@ class Kutuphane:
             self._kucuk_sil(mid)
         c.commit()
         self._ozel_adlari_uygula()
+        self.canli_eslestir()
         self.tarama.update(durum="tamam", bulunan=len(gorulen), son=time.time(), yeni=yeni, silinen=len(silinen))
         print("Tarama bitti: %d dosya (%d yeni, %d kaldırıldı)" % (len(gorulen), yeni, len(silinen)))
         threading.Thread(target=self._tarih_taramasi, daemon=True).start()
@@ -613,6 +661,9 @@ class Kutuphane:
                           (b.get("genislik") or -1, b.get("yukseklik") or -1, b.get("sure"), r["id"])),
                 b.get("cekim") and c.execute("UPDATE medya SET tarih=? WHERE id=?", (b["cekim"], r["id"]))))
             time.sleep(0.02)
+            if i % 150 == 149:
+                self.canli_eslestir()
+        self.canli_eslestir()
 
     def _fotograf_tarihleri(self):
         """Fotoğrafların EXIF çekim tarihini okur (sıralama için)."""
@@ -689,6 +740,11 @@ class Kutuphane:
         d = dict(r)
         d["dosya_adi"] = d["ad"]
         d["etiketler"] = self.etk["atama"].get(d["yol"], [])
+        # canlı fotoğraf: fotoğrafın hareketli eşi ya da tek başına kısa video
+        if d.get("tur") == "foto" and d.get("canli"):
+            d["canli_video"] = d["canli"]
+        elif d.get("tur") == "video" and d.get("gtur") == "foto":
+            d["canli_video"] = d["id"]
         if d.get("ozel_ad"):
             d["ad"] = d["ozel_ad"]
             if d["tur"] == "muzik":
@@ -699,10 +755,10 @@ class Kutuphane:
         return d
 
     def liste(self, tur, sira="yeni", klasor=None, bas=0, adet=60, ara=None, etiketler=None, t1=None, t2=None):
-        sql = "SELECT m.*, i.konum, i.sure AS izleme_sure FROM medya m LEFT JOIN izleme i ON i.id=m.id WHERE m.tur=?"
+        sql = "SELECT m.*, i.konum, i.sure AS izleme_sure FROM medya m LEFT JOIN izleme i ON i.id=m.id WHERE m.gtur=?"
         p = [tur]
         if tur == "hepsi":
-            sql = sql.replace("WHERE m.tur=?", "WHERE 1=1")
+            sql = sql.replace("WHERE m.gtur=?", "WHERE m.gtur<>'gizli'")
             p = []
         if t1 is not None:
             sql += " AND m.tarih >= ?"
@@ -734,9 +790,9 @@ class Kutuphane:
     def takvim(self):
         sql = """SELECT CAST(strftime('%Y', tarih, 'unixepoch', 'localtime') AS INTEGER) yil,
                         CAST(strftime('%m', tarih, 'unixepoch', 'localtime') AS INTEGER) ay,
-                        SUM(tur='foto') foto, SUM(tur='video') video,
-                        MAX(CASE WHEN tur='foto' THEN id END) kapak_foto, MAX(CASE WHEN tur='video' THEN id END) kapak_video
-                 FROM medya WHERE tur IN ('foto','video') AND tarih IS NOT NULL
+                        SUM(gtur='foto') foto, SUM(gtur='video') video,
+                        MAX(CASE WHEN gtur='foto' AND tur='foto' THEN id END) kapak_foto, MAX(CASE WHEN gtur='video' THEN id END) kapak_video
+                 FROM medya WHERE gtur IN ('foto','video') AND tarih IS NOT NULL
                  GROUP BY yil, ay ORDER BY yil DESC, ay DESC"""
         return [{**dict(r), "kapak": r["kapak_foto"] or r["kapak_video"]} for r in self.db().execute(sql)]
 
@@ -744,7 +800,7 @@ class Kutuphane:
         """Önceki yıllarda bugünün tarihinde çekilmiş fotoğraf ve videolar (yıl yıl)."""
         bugun = time.localtime()
         ay, gun = ay or bugun.tm_mon, gun or bugun.tm_mday
-        sql = """SELECT * FROM medya WHERE tur IN ('foto','video')
+        sql = """SELECT * FROM medya WHERE gtur IN ('foto','video')
                  AND strftime('%m-%d', tarih, 'unixepoch', 'localtime') = ?
                  AND CAST(strftime('%Y', tarih, 'unixepoch', 'localtime') AS INTEGER) < ?
                  ORDER BY tarih DESC"""
@@ -780,14 +836,14 @@ class Kutuphane:
         return hedef
 
     def say(self, tur):
-        return self.db().execute("SELECT COUNT(*) FROM medya WHERE tur=?", (tur,)).fetchone()[0]
+        return self.db().execute("SELECT COUNT(*) FROM medya WHERE gtur=?", (tur,)).fetchone()[0]
 
     def al(self, mid):
         r = self.db().execute("SELECT m.*, i.konum, i.sure AS izleme_sure FROM medya m LEFT JOIN izleme i ON i.id=m.id WHERE m.id=?", (mid,)).fetchone()
         return self.satir(r) if r else None
 
     def klasorler(self, tur):
-        sql = """SELECT klasor, COUNT(*) adet, MIN(id) kapak, MAX(tarih) son FROM medya WHERE tur=?
+        sql = """SELECT klasor, COUNT(*) adet, MIN(id) kapak, MAX(tarih) son FROM medya WHERE gtur=?
                  GROUP BY klasor ORDER BY son DESC"""
         return [dict(r) for r in self.db().execute(sql, (tur,))]
 
@@ -798,12 +854,12 @@ class Kutuphane:
         c = self.db()
         if yol:
             satirlar = c.execute(
-                "SELECT klasor, tur, COUNT(*) n, MAX(id) son_id, MAX(tarih) son FROM medya "
-                "WHERE klasor=? OR klasor LIKE ? ESCAPE '\\' GROUP BY klasor, tur",
+                "SELECT klasor, gtur tur, COUNT(*) n, MAX(id) son_id, MAX(tarih) son FROM medya "
+                "WHERE gtur<>'gizli' AND (klasor=? OR klasor LIKE ? ESCAPE '\\') GROUP BY klasor, gtur",
                 (yol, like_kacis(yol) + "/%")).fetchall()
         else:
             satirlar = c.execute(
-                "SELECT klasor, tur, COUNT(*) n, MAX(id) son_id, MAX(tarih) son FROM medya GROUP BY klasor, tur").fetchall()
+                "SELECT klasor, gtur tur, COUNT(*) n, MAX(id) son_id, MAX(tarih) son FROM medya WHERE gtur<>'gizli' GROUP BY klasor, gtur").fetchall()
         onek = yol + "/" if yol else ""
         cocuklar, toplam, burada = {}, {}, {}
         for r in satirlar:
@@ -833,31 +889,31 @@ class Kutuphane:
         m = self.al(mid)
         if not m:
             return []
-        sql = "SELECT * FROM medya WHERE tur=? AND id<>? ORDER BY RANDOM() LIMIT ?"
-        return [self.satir(r) for r in self.db().execute(sql, (m["tur"], mid, adet))]
+        sql = "SELECT * FROM medya WHERE gtur=? AND id<>? ORDER BY RANDOM() LIMIT ?"
+        return [self.satir(r) for r in self.db().execute(sql, (m["gtur"], mid, adet))]
 
     def devam(self, adet=12):
         sql = """SELECT m.*, i.konum, i.sure AS izleme_sure FROM izleme i JOIN medya m ON m.id=i.id
-                 WHERE m.tur='video' AND i.konum > 15 AND (i.sure IS NULL OR i.konum < i.sure*0.93)
+                 WHERE m.gtur='video' AND i.konum > 15 AND (i.sure IS NULL OR i.konum < i.sure*0.93)
                  ORDER BY i.son DESC LIMIT ?"""
         return [self.satir(r) for r in self.db().execute(sql, (adet,))]
 
     def etiketsiz_sayisi(self, tur):
         return self.db().execute(
-            "SELECT COUNT(*) FROM medya WHERE tur=? AND yol NOT IN (SELECT yol FROM etiket)", (tur,)).fetchone()[0]
+            "SELECT COUNT(*) FROM medya WHERE gtur=? AND yol NOT IN (SELECT yol FROM etiket)", (tur,)).fetchone()[0]
 
     def onerilen(self, tur="video", adet=12):
         """Ana sayfa önerileri, her açılışta rastgele. Etiketlenmemiş dosya varken
         yalnızca onlar gösterilir (etiketleme kolay olsun); hepsi etiketlenince tümü."""
-        sql = "SELECT * FROM medya WHERE tur=? AND yol NOT IN (SELECT yol FROM etiket) ORDER BY RANDOM() LIMIT ?"
+        sql = "SELECT * FROM medya WHERE gtur=? AND yol NOT IN (SELECT yol FROM etiket) ORDER BY RANDOM() LIMIT ?"
         l = [self.satir(r) for r in self.db().execute(sql, (tur, adet))]
         if not l:
-            l = [self.satir(r) for r in self.db().execute("SELECT * FROM medya WHERE tur=? ORDER BY RANDOM() LIMIT ?", (tur, adet))]
+            l = [self.satir(r) for r in self.db().execute("SELECT * FROM medya WHERE gtur=? ORDER BY RANDOM() LIMIT ?", (tur, adet))]
         return l
 
     def son_etiketsiz(self, tur="foto", adet=12):
         """En yeni etiketlenmemiş fotoğraflar; hepsi etiketliyse en yeniler."""
-        sql = "SELECT * FROM medya WHERE tur=? AND yol NOT IN (SELECT yol FROM etiket) ORDER BY tarih DESC LIMIT ?"
+        sql = "SELECT * FROM medya WHERE gtur=? AND yol NOT IN (SELECT yol FROM etiket) ORDER BY tarih DESC LIMIT ?"
         l = [self.satir(r) for r in self.db().execute(sql, (tur, adet))]
         return l or self.liste(tur, "yeni", adet=adet)
 
@@ -881,7 +937,9 @@ class Kutuphane:
                  tarih DESC LIMIT ?"""
         sonuc = {"video": [], "foto": [], "muzik": [], "belge": []}
         for r in self.db().execute(sql, (a, a, a, a, a, a, a, a, a, k + "%", 400)):
-            l = sonuc[r["tur"]]
+            if r["gtur"] == "gizli":
+                continue
+            l = sonuc[r["gtur"]]
             if len(l) < adet:
                 l.append(self.satir(r))
         return sonuc
@@ -889,7 +947,7 @@ class Kutuphane:
     def istatistik(self):
         c = self.db()
         d = {}
-        for r in c.execute("SELECT tur, COUNT(*) adet, COALESCE(SUM(boyut),0) boyut FROM medya GROUP BY tur"):
+        for r in c.execute("SELECT gtur tur, COUNT(*) adet, COALESCE(SUM(boyut),0) boyut FROM medya WHERE gtur<>'gizli' GROUP BY gtur"):
             d[r["tur"]] = {"adet": r["adet"], "boyut": r["boyut"]}
         return d
 
