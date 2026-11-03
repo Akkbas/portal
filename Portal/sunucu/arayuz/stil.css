@@ -551,3 +551,6 @@ body.calar-acik .secim-cubugu { bottom: 96px; }
 .es-toplu-etk:hover { background: var(--yuzey-2); }
 .es-toplu-etk svg { width: 15px; height: 15px; color: var(--vurgu); }
 .es-toplu-etk small { margin-left: auto; color: var(--metin-3); }
+
+.ik-hata { align-self: end; margin-bottom: 12px; max-width: 520px; background: rgba(20,20,20,.92); color: #eee; padding: 12px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; text-align: center; z-index: 2; }
+.ik-hata a { color: #ffb08a; }

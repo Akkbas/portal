@@ -204,6 +204,8 @@ def durum():
         "vikipedi": viki.liste(),
         "disk": disk,
         "ffmpeg": bool(kutup.ffmpeg),
+        "heic": __import__("kutuphane").HEIF_VAR,
+        "hazirlik": kutup.hazirlik,
         "klasorler": {t: [kutup.goreli(k) for k in kutup.kategori_klasorleri(t)] for t in UZANTILAR},
     })
 

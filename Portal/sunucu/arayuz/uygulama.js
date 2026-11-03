@@ -4,9 +4,9 @@
 /* küçük resim sunucusu meşgulse birkaç kez tekrar dener; hiç yoksa resmi kaldırır */
 function kucukHata(img, gizle) {
   const n = +(img.dataset.n || 0);
-  if (img.src.includes("/kucuk/") && n < 6) {
+  if (img.src.includes("/kucuk/") && n < 60) {
     img.dataset.n = n + 1;
-    setTimeout(() => { if (img.isConnected) img.src = img.src.split("?")[0] + "?d=" + (n + 1); }, 900 + n * 900 + Math.random() * 600);
+    setTimeout(() => { if (img.isConnected) img.src = img.src.split("?")[0] + "?d=" + (n + 1); }, Math.min(1200 + n * 600, 5000) + Math.random() * 800);
     return;
   }
   if (gizle) img.style.opacity = 0; else img.remove();
@@ -917,9 +917,21 @@ function isikKutuGoster() {
     vid.play().catch(() => {});
   } else {
     img.hidden = false;
+    $("#ikHata").hidden = true;
+    img.onerror = null;
     img.src = "/kucuk/" + m.id;
     const tam = new Image();
     tam.onload = () => { if (IK.liste[IK.i] === m) img.src = tam.src; };
+    tam.onerror = () => {
+      if (IK.liste[IK.i] !== m) return;
+      const heic = /\.hei[cf]$/i.test(m.uzanti || "");
+      const h = $("#ikHata");
+      h.innerHTML = heic && !DURUM.bilgi?.heic
+        ? "Bu bir iPhone fotoğrafı (HEIC). Açabilmek için <b>Portal\\Kurulum.bat</b> dosyasını internet varken bir kez daha çalıştır, sonra Portal'ı yeniden aç."
+        : "Bu fotoğraf açılamadı. Dosya bozuk olabilir ya da desteklenmeyen bir biçimde. <a href='javascript:void(0)' id='ikHataAc'>Bilgisayardaki programla aç</a>";
+      h.hidden = false;
+      $("#ikHataAc")?.addEventListener("click", () => post("/api/ac", { yol: m.yol }));
+    };
     tam.src = "/goruntu/" + m.id;
     if (m.canli_video) {
       // canlı fotoğraf: açılınca hareketi bir kez oynat, sonra fotoğrafa dön
@@ -1516,6 +1528,8 @@ async function sayfaAyarlar() {
     <div class="kart"><h3>Vikipedi</h3>${d.vikipedi.length ? `<dl class="kv">${d.vikipedi.map((z) => `<dt>${esc(z.baslik)}</dt><dd>${esc(z.dosya)} · ${z.makale.toLocaleString("tr-TR")} makale · ${boyutFmt(z.boyut)}</dd>`).join("")}</dl>` : "<p>ZIM dosyası bulunamadı. <code>Vikipedi</code> klasörüne koyup Portal'ı yeniden başlat.</p>"}</div>
     ${d.disk ? `<div class="kart"><h3>Disk</h3><div class="yan-alt" style="padding:0;color:var(--metin-2)"><div class="doluluk"><i style="width:${(100 - (d.disk.bos / d.disk.toplam) * 100).toFixed(1)}%"></i></div>${boyutFmt(d.disk.bos)} boş · toplam ${boyutFmt(d.disk.toplam)}</div></div>` : ""}
     <div class="kart"><h3>Diğer</h3><dl class="kv"><dt>Video dönüştürücü (ffmpeg)</dt><dd>${d.ffmpeg ? "hazır" : "bulunamadı — video küçük resimleri ve mkv/avi oynatma çalışmaz"}</dd>
+    <dt>iPhone fotoğrafları (HEIC)</dt><dd>${d.heic ? "destekleniyor" : '<b style="color:#e03131">kurulu değil</b> — HEIC fotoğraflar açılmaz. İnternet varken <code>Portal\\Kurulum.bat</code> dosyasını bir kez daha çalıştır.'}</dd>
+    <dt>Küçük resim hazırlığı</dt><dd>${d.hazirlik?.toplam ? (d.hazirlik.durum === "bitti" ? "tamamlandı" : `sürüyor: ${d.hazirlik.yapilan.toLocaleString("tr-TR")} / ${d.hazirlik.toplam.toLocaleString("tr-TR")} — bitince tüm fotoğraflar anında açılır`) : "gerekmiyor"}</dd>
     <dt>Ayar dosyası</dt><dd><code>Portal\\ayarlar.json</code></dd></dl></div></div>`;
   saglikKarti();
   $("#yenidenTara").onclick = async () => { await post("/api/yeniden-tara"); bildir("Tarama başladı. Bitince sayfayı yenile."); setTimeout(sayfaAyarlar, 2500); };

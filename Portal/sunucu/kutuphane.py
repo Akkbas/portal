@@ -91,12 +91,14 @@ class Kutuphane:
         self.tarama = {"durum": "bekliyor", "islenen": 0, "bulunan": 0, "son": None}
         self.uretim_kilit = threading.Semaphore(2)
         self.ad_kilit = threading.Lock()
+        self.buyuk_kilit = threading.Semaphore(2)   # açılan fotoğraf, küçük resim kuyruğunu beklemez
         self.etk = {"liste": [], "atama": {}}
         # aynı anda en fazla 6 istek küçük resim için bekleyebilir; gerisi "sonra tekrar dene" alır.
         # Böylece sayfa istekleri küçük resim kuyruğunun arkasında kalmaz.
         self.bekleyen = threading.BoundedSemaphore(6)
         self.ffmpeg = self._ffmpeg_bul()
-        self.okuma_hatalari = []   # diskten okunamayan dosyalar (disk sağlığı için)
+        self.okuma_hatalari = []
+        self.hazirlik = {"durum": "bekliyor", "yapilan": 0, "toplam": 0}   # diskten okunamayan dosyalar (disk sağlığı için)
         self._sema()
 
     # ---------- veritabanı ----------
@@ -641,6 +643,27 @@ class Kutuphane:
     def _tarih_taramasi(self):
         self._fotograf_tarihleri()
         self._video_tarihleri()
+        self._kucukleri_hazirla()
+
+    def _kucukleri_hazirla(self):
+        """Boşta kalan zamanda eksik küçük resimleri önceden üretir (en yeni
+        fotoğraflardan başlayarak). Böylece sayfalar daha sonra anında açılır.
+        Sayfalardan istek geldiğinde o istekler önceliklidir."""
+        self.hazirlik = {"durum": "suruyor", "yapilan": 0, "toplam": 0}
+        satirlar = self.db().execute(
+            "SELECT id FROM medya WHERE tur IN ('foto','video') AND gtur<>'gizli' ORDER BY tarih DESC").fetchall()
+        eksik = [r[0] for r in satirlar if not os.path.exists(self._kucuk_yolu(r[0])) and not os.path.exists(self._kucuk_yolu(r[0]) + ".yok")]
+        self.hazirlik["toplam"] = len(eksik)
+        for mid in eksik:
+            # sayfadan bekleyen küçük resim isteği varsa önce onlar
+            while self.bekleyen._value < 6:
+                time.sleep(0.3)
+            try:
+                self.kucuk_resim(mid)
+            except Exception:
+                pass
+            self.hazirlik["yapilan"] += 1
+        self.hazirlik["durum"] = "bitti"
 
     def _video_tarihleri(self):
         """Videoların gerçek çekim tarihini (telefonların yazdığı creation_time) okur.
@@ -824,7 +847,7 @@ class Kutuphane:
         if not m:
             return None
         from PIL import Image, ImageOps
-        with self.uretim_kilit:
+        with self.buyuk_kilit:
             with Image.open(self.tam_yol(m["yol"])) as im:
                 im = ImageOps.exif_transpose(im)
                 if im.mode not in ("RGB", "L"):
@@ -1021,6 +1044,20 @@ class Kutuphane:
 
     def _foto_kucuk(self, kaynak, hedef):
         from PIL import Image, ImageOps
+        if HEIF_VAR and kaynak.lower().endswith((".heic", ".heif")):
+            # iPhone fotoğrafları içinde hazır bir küçük resim taşır; 12 MP'lik
+            # fotoğrafın tamamını çözmek yerine onu kullanmak yavaş diskte çok daha hızlıdır.
+            try:
+                import pillow_heif
+                h = pillow_heif.open_heif(kaynak, convert_hdr_to_8bit=True)
+                birincil = h[h.primary_index] if hasattr(h, "primary_index") else h[0]
+                kutular = birincil.info.get("thumbnails") or []
+                if kutular:
+                    th = birincil.get_thumbnail(0)
+                    if th.size[0] >= 240:
+                        return self._kaydet(th.to_pillow(), hedef)
+            except Exception:
+                pass
         with Image.open(kaynak) as im:
             im.draft("RGB", (KUCUK_GENISLIK * 2, KUCUK_GENISLIK * 2))
             im = ImageOps.exif_transpose(im)
