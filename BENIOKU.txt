@@ -6,7 +6,10 @@ ve belgelerini tarayıcıda internet sitesi gibi gezmeni sağlar. İnternet gere
 
 VERİLERİN GÜVENDE
 -----------------
-Portal diskindeki dosyaları SADECE OKUR. Hiçbir dosyayı değiştirmez, taşımaz, silmez.
+Portal diskindeki dosyaları SADECE OKUR. Kendiliğinden hiçbir dosyayı değiştirmez, taşımaz, silmez.
+- Ad değiştirme (kalem simgesi) dosyanın adını değiştirmez; ad sadece Portal'da görünür.
+- Sil (çöp kutusu simgesi) dosyayı Portal\Cop klasörüne taşır; "Çöp kutusu" sayfasından
+  geri alınabilir. Kalıcı silme yalnızca "Çöp kutusunu boşalt" ile olur.
 Yalnızca "Portal\veri" klasörüne küçük resim ve indeks yazar. Bu klasörü silsen bile
 dosyaların etkilenmez (Portal bir sonraki açılışta yeniden oluşturur).
 

@@ -53,9 +53,16 @@ function renk(metin) {
 const wikiYol = (y) => String(y).split("/").map(encodeURIComponent).join("/");
 const klasorAdi = (k) => (k || "").split("/").filter(Boolean).pop() || "Disk";
 const bas = (s) => (s || "?").trim().charAt(0).toLocaleUpperCase("tr-TR");
-function bildir(metin, sure = 3200) {
+function bildir(metin, sure = 3200, eylem) {
   const b = $("#bildirim");
   b.textContent = metin;
+  if (eylem) {
+    const d = document.createElement("button");
+    d.className = "bildirim-eylem";
+    d.textContent = eylem.metin;
+    d.onclick = () => { b.hidden = true; eylem.fn(); };
+    b.appendChild(d);
+  }
   b.hidden = false;
   clearTimeout(bildir.z);
   bildir.z = setTimeout(() => (b.hidden = true), sure);
@@ -101,6 +108,94 @@ function kucukResim(m, cls = "") {
 }
 
 /* ---------------- kart şablonları ---------------- */
+/* ---------------- ad değiştirme ----------------
+   Diskteki dosyanın adı değişmez; Portal'da görünen ad olarak saklanır ve aramada bulunur. */
+const COP = '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+const KALEM = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>';
+function adAlani(m) {
+  if (!m.id) return esc(m.ad);
+  return `<span class="ad-metin" data-ad-id="${m.id}" title="Değiştirmek için çift tıkla">${esc(m.ad)}</span><button type="button" class="kalem" data-ad-id="${m.id}" title="Adını değiştir" aria-label="Adını değiştir">${KALEM}</button><button type="button" class="kalem cop-btn" data-sil-id="${m.id}" title="Sil (çöp kutusuna taşı)" aria-label="Sil">${COP}</button>`;
+}
+function adDuzenle(id, cagiran) {
+  const kaynak = cagiran.closest("h1, h3, h4, b, #ikBilgi")?.querySelector(`.ad-metin[data-ad-id="${id}"]`) || $(`.ad-metin[data-ad-id="${id}"]`);
+  if (!kaynak || kaynak.dataset.duzenleniyor) return;
+  kaynak.dataset.duzenleniyor = "1";
+  const eski = kaynak.textContent;
+  const kutu = document.createElement("input");
+  kutu.className = "ad-kutu";
+  kutu.value = eski;
+  kutu.placeholder = "Yeni ad (boş bırakırsan dosya adı kullanılır)";
+  kaynak.hidden = true;
+  kaynak.after(kutu);
+  kutu.focus();
+  kutu.select();
+  let bitti = false;
+  const kapat = () => { kutu.remove(); kaynak.hidden = false; delete kaynak.dataset.duzenleniyor; };
+  async function kaydet() {
+    if (bitti) return;
+    bitti = true;
+    const yeni = kutu.value.trim();
+    if (yeni === eski) return kapat();
+    try {
+      const m = await post("/api/ad/" + id, { ad: yeni });
+      $$(`.ad-metin[data-ad-id="${id}"]`).forEach((s) => (s.textContent = m.ad));
+      for (const l of [IK.liste, CALAR.liste]) l.forEach((x) => { if (x.id === +id) { x.ad = m.ad; if (x.tur === "muzik") x.baslik = m.ad; } });
+      if (CALAR.liste[CALAR.i]?.id === +id) $("#calarBaslik").textContent = m.ad;
+      if (location.hash.startsWith("#/izle/" + id)) document.title = m.ad + " — Portal";
+      bildir(yeni ? "Ad kaydedildi. Aramada bu adla bulabilirsin." : "Özel ad kaldırıldı, dosya adı kullanılıyor.");
+    } catch (e) {
+      bildir("Ad kaydedilemedi.");
+    }
+    kapat();
+  }
+  kutu.addEventListener("keydown", (e) => {
+    e.stopPropagation();
+    if (e.key === "Enter") { e.preventDefault(); kaydet(); }
+    if (e.key === "Escape") { bitti = true; kapat(); }
+  });
+  kutu.addEventListener("blur", kaydet);
+  ["click", "mousedown", "dblclick"].forEach((t) => kutu.addEventListener(t, (e) => { e.stopPropagation(); e.preventDefault(); }));
+}
+/* ---------------- silme (çöp kutusuna taşıma) ---------------- */
+async function dosyaSil(id, cagiran) {
+  const ad = $(`.ad-metin[data-ad-id="${id}"]`)?.textContent || "Bu dosya";
+  if (!confirm(`“${ad}” silinsin mi?\n\nDosya çöp kutusuna taşınır; “Çöp kutusu” sayfasından geri alabilirsin.`)) return;
+  let r;
+  try { r = await post("/api/sil/" + id); } catch (e) { bildir("Dosya silinemedi. Başka bir programda açık olabilir."); return; }
+  id = +id;
+  // ekrandan kaldır
+  const kart = cagiran?.closest(".vkart, .mkart, .belge, .parca");
+  if (kart) kart.remove();
+  $$(`.foto-izgara [data-id="${id}"]`).forEach((x) => x.remove());
+  // ışık kutusu açıksa listeden çıkar
+  const ikAcik = !$("#isikKutu").hidden;
+  const ikI = IK.liste.findIndex((x) => x.id === id);
+  if (ikI >= 0) {
+    IK.liste.splice(ikI, 1);
+    if (ikAcik) { if (!IK.liste.length) isikKutuKapat(); else { IK.i = Math.min(ikI, IK.liste.length - 1); isikKutuGoster(); } }
+  }
+  const ci = CALAR.liste.findIndex((x) => x.id === id);
+  if (ci >= 0) { const caliyor = ci === CALAR.i; CALAR.liste.splice(ci, 1); if (ci < CALAR.i) CALAR.i--; if (caliyor) { if (CALAR.liste.length) { CALAR.i %= CALAR.liste.length; calarYukle(); } else $("#calarKapat").click(); } }
+  if (location.hash.startsWith("#/izle/" + id)) history.length > 1 ? history.back() : (location.hash = "#/videolar");
+  bildir(`“${r.ad}” çöp kutusuna taşındı.`, 7000, { metin: "Geri al", fn: async () => { await post("/api/cop/geri/" + r.id); bildir("Geri alındı. Liste birkaç saniye içinde güncellenir."); setTimeout(yonlendir, 2500); } });
+}
+document.addEventListener("click", (e) => {
+  const sb = e.target.closest(".cop-btn");
+  if (sb) { e.preventDefault(); e.stopPropagation(); dosyaSil(sb.dataset.silId, sb); return; }
+  const k = e.target.closest(".kalem");
+  if (!k) return;
+  e.preventDefault();
+  e.stopPropagation();
+  adDuzenle(k.dataset.adId, k);
+}, true);
+document.addEventListener("dblclick", (e) => {
+  const s = e.target.closest(".ad-metin");
+  if (!s) return;
+  e.preventDefault();
+  e.stopPropagation();
+  adDuzenle(s.dataset.adId, s);
+}, true);
+
 function vkart(m) {
   const ilerleme = m.konum && m.izleme_sure ? Math.min(100, (m.konum / m.izleme_sure) * 100) : 0;
   const kl = klasorAdi(m.klasor);
@@ -112,12 +207,12 @@ function vkart(m) {
     </div>
     <div class="bilgi">
       <span class="avatar" style="background:${renk(kl)}">${esc(bas(kl))}</span>
-      <div><h3>${esc(m.ad)}</h3><div class="meta">${esc(kl)}<br>${boyutFmt(m.boyut)} · ${goreceTarih(m.tarih)}</div></div>
+      <div><h3>${adAlani(m)}</h3><div class="meta">${esc(kl)}<br>${boyutFmt(m.boyut)} · ${goreceTarih(m.tarih)}</div></div>
     </div></a>`;
 }
 function mkart(m) {
   return `<a class="mkart" href="#/izle/${m.id}"><div class="kapak">${kucukResim(m)}${m.sure ? `<span class="sure">${sureFmt(m.sure)}</span>` : ""}</div>
-    <div><h4>${esc(m.ad)}</h4><div class="meta">${esc(klasorAdi(m.klasor))}<br>${boyutFmt(m.boyut)}</div></div></a>`;
+    <div><h4>${adAlani(m)}</h4><div class="meta">${esc(klasorAdi(m.klasor))}<br>${boyutFmt(m.boyut)}</div></div></a>`;
 }
 function makaleKart(o, genis = false, etiket = "Vikipedi") {
   const href = `#/wiki/${o.z}/${wikiYol(o.yol)}`;
@@ -130,7 +225,7 @@ function belgeKart(m) {
   return `<div class="belge" data-id="${m.id}" data-uz="${esc(uz)}" data-yol="${esc(m.yol)}">
     <div class="sayfa-onizleme"><span class="uz" style="background:${UZ_RENK[uz] || "#555"}">${esc(uz.toUpperCase())}</span>
       ${uz === "pdf" ? `<img loading="lazy" src="/kucuk/${m.id}" alt="" style="position:absolute;inset:0" onerror="kucukHata(this)" onload="if(this.naturalWidth<2)this.remove()">` : ""}</div>
-    <h4>${esc(m.ad)}</h4><span>${boyutFmt(m.boyut)} · ${goreceTarih(m.tarih)}</span></div>`;
+    <h4>${adAlani(m)}</h4><span>${boyutFmt(m.boyut)} · ${goreceTarih(m.tarih)}</span></div>`;
 }
 function sayilarMetni(say, kisa = false) {
   const ad = { video: "video", foto: "fotoğraf", muzik: "şarkı", belge: "belge" };
@@ -183,7 +278,7 @@ function sonsuzListe(kap, getir, ciz, sayfaBoyu = 60) {
 /* ---------------- yönlendirici ---------------- */
 const SAYFALAR = {
   "": sayfaAna, ara: sayfaAra, videolar: sayfaVideolar, izle: sayfaIzle, fotograflar: sayfaFotograflar,
-  muzik: sayfaMuzik, belgeler: sayfaBelgeler, klasorler: sayfaKlasorler, klasor: sayfaKlasor, wiki: sayfaWiki, dosyalar: sayfaDosyalar, ayarlar: sayfaAyarlar,
+  muzik: sayfaMuzik, belgeler: sayfaBelgeler, klasorler: sayfaKlasorler, klasor: sayfaKlasor, cop: sayfaCop, wiki: sayfaWiki, dosyalar: sayfaDosyalar, ayarlar: sayfaAyarlar,
 };
 let aktifTemizle = null;
 async function yonlendir() {
@@ -352,7 +447,7 @@ async function sayfaIzle([id]) {
       <div class="oynatici"><video id="video" controls autoplay playsinline preload="metadata" poster="/kucuk/${m.id}"></video><span class="uyari" id="uyari" hidden></span></div>
       <div id="akisArac" hidden style="display:flex;gap:10px;align-items:center;margin-top:8px;font-size:13px;color:var(--metin-2)">
         <span>Uyumluluk modu — ileri sar:</span><input type="range" id="akisKonum" min="0" max="1000" value="0" style="flex:1;accent-color:var(--vurgu)"><span id="akisZaman"></span></div>
-      <h1>${esc(m.ad)}</h1>
+      <h1>${adAlani(m)}</h1>
       <div class="izle-satir">
         <div class="kanal"><span class="avatar" style="background:${renk(kl)}">${esc(bas(kl))}</span><div><b>${esc(kl)}</b><small>${esc(m.klasor)}</small></div></div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -495,7 +590,7 @@ function isikKutuGoster() {
   const tam = new Image();
   tam.onload = () => { if (IK.liste[IK.i] === m) img.src = tam.src; };
   tam.src = "/dosya/" + m.id;
-  $("#ikBilgi").textContent = `${IK.i + 1} / ${IK.liste.length} · ${m.ad} · ${tarihFmt(m.tarih)}`;
+  $("#ikBilgi").innerHTML = `${IK.i + 1} / ${IK.liste.length} · ${adAlani(m)} · ${tarihFmt(m.tarih)}`;
   // sonrakini önceden yükle
   const s = IK.liste[IK.i + 1];
   if (s) new Image().src = "/dosya/" + s.id;
@@ -524,7 +619,7 @@ document.addEventListener("keydown", (e) => {
 function parcaSatir(m, i) {
   return `<div class="parca" data-i="${i}" data-id="${m.id}"><span class="no">${i + 1}</span>
     <span class="kapakcik">${IKON.muzik}<img loading="lazy" src="/kucuk/${m.id}" alt="" style="position:absolute;width:48px;height:48px" onerror="kucukHata(this)" onload="if(this.naturalWidth<2)this.remove()"></span>
-    <span><b>${esc(m.baslik || m.ad)}</b><small>${esc(m.sanatci || klasorAdi(m.klasor))}</small></span>
+    <span><b>${adAlani({ ...m, ad: m.baslik || m.ad })}</b><small>${esc(m.sanatci || klasorAdi(m.klasor))}</small></span>
     <span class="albumad">${esc(m.album || klasorAdi(m.klasor))}</span><span class="surem">${sureFmt(m.sure)}</span></div>`;
 }
 function muzikListeBagla(kap, liste) {
@@ -885,6 +980,32 @@ async function sayfaDosyalar(_, q) {
     if (o.ad.toLowerCase().endsWith(".zim")) { location.hash = "#/wiki"; return; }
     await post("/api/ac", { yol: o.yol });
     bildir("“" + o.ad + "” bilgisayardaki programla açılıyor…");
+  });
+}
+
+/* ---------------- ÇÖP KUTUSU ---------------- */
+async function sayfaCop() {
+  document.title = "Çöp kutusu — Portal";
+  const l = await api("/api/cop");
+  const toplam = l.reduce((t, o) => t + (o.boyut || 0), 0);
+  sayfa.innerHTML = `<div class="dar" style="max-width:900px"><h1 class="sayfa-baslik">Çöp kutusu</h1>
+    <p class="sayfa-alt">Sildiğin dosyalar burada bekler (diskte <code>Portal\\Cop</code> klasöründe). Geri alabilir ya da kalıcı olarak silebilirsin.</p>
+    ${l.length ? `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;gap:12px;flex-wrap:wrap"><span style="color:var(--metin-2);font-size:14px">${l.length} dosya · ${boyutFmt(toplam)}</span>
+      <button class="kucuk-btn" id="copBosalt" style="color:#d33">${COP}Çöp kutusunu boşalt</button></div>
+    <table class="dosya-tablo"><thead><tr><th>Ad</th><th>Eski yeri</th><th style="text-align:right">Silinme</th><th></th></tr></thead><tbody>
+    ${l.map((o) => `<tr data-id="${esc(o.id)}"><td><span class="ad">${IKON[o.tur] || IKON.dosya}${esc(o.ad)}</span></td><td style="color:var(--metin-2);font-size:13px">${esc(o.yol)}</td>
+      <td class="sag">${goreceTarih(o.tarih)}</td><td class="sag"><button class="kucuk-btn" data-geri="${esc(o.id)}">Geri al</button> <button class="kucuk-btn" data-kalici="${esc(o.id)}" title="Kalıcı sil" style="color:#d33">${COP}</button></td></tr>`).join("")}
+    </tbody></table>` : bosEkran(COP, "Çöp kutusu boş", "Sildiğin dosyalar geri alınabilmeleri için burada tutulur.")}</div>`;
+  sayfa.querySelector("tbody")?.addEventListener("click", async (e) => {
+    const g = e.target.closest("[data-geri]"), k = e.target.closest("[data-kalici]");
+    if (g) { await post("/api/cop/geri/" + g.dataset.geri); bildir("Dosya eski yerine geri taşındı."); sayfaCop(); }
+    if (k && confirm("Bu dosya KALICI olarak silinecek ve geri alınamayacak. Emin misin?")) { await post("/api/cop/bosalt", { id: k.dataset.kalici }); sayfaCop(); }
+  });
+  $("#copBosalt")?.addEventListener("click", async () => {
+    if (!confirm(`Çöp kutusundaki ${l.length} dosya KALICI olarak silinecek (${boyutFmt(toplam)}). Bu işlem geri alınamaz. Devam edilsin mi?`)) return;
+    await post("/api/cop/bosalt", {});
+    bildir("Çöp kutusu boşaltıldı.");
+    sayfaCop();
   });
 }
 

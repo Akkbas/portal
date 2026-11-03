@@ -67,6 +67,7 @@ class Kutuphane:
         self.yerel = threading.local()
         self.tarama = {"durum": "bekliyor", "islenen": 0, "bulunan": 0, "son": None}
         self.uretim_kilit = threading.Semaphore(2)
+        self.ad_kilit = threading.Lock()
         # aynı anda en fazla 6 istek küçük resim için bekleyebilir; gerisi "sonra tekrar dene" alır.
         # Böylece sayfa istekleri küçük resim kuyruğunun arkasında kalmaz.
         self.bekleyen = threading.BoundedSemaphore(6)
@@ -142,7 +143,151 @@ class Kutuphane:
         CREATE TABLE IF NOT EXISTS izleme(
             id INTEGER PRIMARY KEY, konum REAL, sure REAL, son REAL, sayi INTEGER DEFAULT 0);
         """)
+        sutunlar = [r[1] for r in c.execute("PRAGMA table_info(medya)")]
+        if "ozel_ad" not in sutunlar:
+            c.execute("ALTER TABLE medya ADD COLUMN ozel_ad TEXT")
         c.commit()
+        self._ozel_adlari_uygula()
+
+    # ---------- çöp kutusu ----------
+    # "Sil" dosyayı hemen yok etmez: diskteki Portal\Cop klasörüne taşır (aynı disk, anında).
+    # Oradan geri alınabilir; kalıcı silme yalnızca "Çöp kutusunu boşalt" ile olur.
+    def _cop_dizin(self):
+        return os.path.join(os.path.dirname(self.veri), "Cop")
+
+    def _cop_kayit_yolu(self):
+        return os.path.join(self.veri, "cop.json")
+
+    def _cop_oku(self):
+        try:
+            with open(self._cop_kayit_yolu(), encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _cop_yaz(self, liste):
+        gecici = self._cop_kayit_yolu() + ".tmp"
+        with open(gecici, "w", encoding="utf-8") as f:
+            json.dump(liste, f, ensure_ascii=False, indent=1)
+        os.replace(gecici, self._cop_kayit_yolu())
+
+    @staticmethod
+    def _bos_ad(yol):
+        if not os.path.exists(yol):
+            return yol
+        govde, uz = os.path.splitext(yol)
+        i = 2
+        while os.path.exists("%s (%d)%s" % (govde, i, uz)):
+            i += 1
+        return "%s (%d)%s" % (govde, i, uz)
+
+    def sil(self, mid):
+        m = self.al(mid)
+        if not m:
+            return None
+        kaynak = self.tam_yol(m["yol"])
+        if not os.path.isfile(kaynak):
+            return None
+        cid = "%d-%d" % (int(time.time() * 1000), mid)
+        hedef_kok = os.path.join(self._cop_dizin(), cid)
+        tasinan = []
+        with self.ad_kilit:
+            os.makedirs(hedef_kok, exist_ok=True)
+            # videonun yanındaki altyazı dosyaları da birlikte taşınır
+            ekler = [kaynak]
+            if m["tur"] == "video":
+                govde = os.path.splitext(kaynak)[0]
+                ekler += [govde + u for u in (".srt", ".vtt", ".tr.srt", ".tur.srt") if os.path.isfile(govde + u)]
+            for y in ekler:
+                h = os.path.join(hedef_kok, os.path.basename(y))
+                os.replace(y, h)  # Cop klasörü aynı diskte: taşıma anında olur, veri kopyalanmaz
+                tasinan.append({"asil": self.goreli(y), "cop": os.path.relpath(h, self._cop_dizin()).replace("\\", "/")})
+            liste = self._cop_oku()
+            liste.append({"id": cid, "ad": m["ad"], "tur": m["tur"], "boyut": m["boyut"], "yol": m["yol"],
+                          "tarih": time.time(), "dosyalar": tasinan, "ozel_ad": m.get("ozel_ad")})
+            self._cop_yaz(liste)
+        c = self.db()
+        c.execute("DELETE FROM medya WHERE id=?", (mid,))
+        c.execute("DELETE FROM izleme WHERE id=?", (mid,))
+        c.commit()
+        self._kucuk_sil(mid)
+        return {"id": cid, "ad": m["ad"]}
+
+    def cop_liste(self):
+        return sorted(self._cop_oku(), key=lambda o: -o["tarih"])
+
+    def geri_al(self, cid):
+        with self.ad_kilit:
+            liste = self._cop_oku()
+            o = next((x for x in liste if x["id"] == cid), None)
+            if not o:
+                return None
+            for d in o["dosyalar"]:
+                kaynak = os.path.join(self._cop_dizin(), d["cop"])
+                hedef = self._bos_ad(self.tam_yol(d["asil"]))
+                os.makedirs(os.path.dirname(hedef), exist_ok=True)
+                if os.path.exists(kaynak):
+                    os.replace(kaynak, hedef)
+            try:
+                os.rmdir(os.path.join(self._cop_dizin(), cid))
+            except OSError:
+                pass
+            liste = [x for x in liste if x["id"] != cid]
+            self._cop_yaz(liste)
+        self.tara_arkaplanda()
+        return o
+
+    def cop_bosalt(self, cid=None):
+        """Çöp kutusundaki dosyaları KALICI olarak siler (geri alınamaz)."""
+        import shutil
+        with self.ad_kilit:
+            liste = self._cop_oku()
+            silinecek = [x for x in liste if cid is None or x["id"] == cid]
+            for o in silinecek:
+                shutil.rmtree(os.path.join(self._cop_dizin(), o["id"]), ignore_errors=True)
+            self._cop_yaz([x for x in liste if x not in silinecek])
+        return len(silinecek)
+
+    # ---------- kullanıcının verdiği adlar ----------
+    # Dosyaların kendisi yeniden adlandırılmaz. Verilen ad, Portal'ın kendi klasöründe
+    # (veri/adlar.json) saklanır; indeks silinse/bozulsa bile kaybolmaz.
+    def _adlar_yolu(self):
+        return os.path.join(self.veri, "adlar.json")
+
+    def _adlari_oku(self):
+        try:
+            with open(self._adlar_yolu(), encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+
+    def _ozel_adlari_uygula(self):
+        adlar = self._adlari_oku()
+        if not adlar:
+            return
+        c = self.db()
+        c.executemany("UPDATE medya SET ozel_ad=? WHERE yol=?", [(v, k) for k, v in adlar.items()])
+        c.commit()
+
+    def ad_ver(self, mid, ad):
+        m = self.db().execute("SELECT yol FROM medya WHERE id=?", (mid,)).fetchone()
+        if not m:
+            return None
+        ad = (ad or "").strip()[:200] or None
+        with self.ad_kilit:
+            adlar = self._adlari_oku()
+            if ad:
+                adlar[m["yol"]] = ad
+            else:
+                adlar.pop(m["yol"], None)
+            gecici = self._adlar_yolu() + ".tmp"
+            with open(gecici, "w", encoding="utf-8") as f:
+                json.dump(adlar, f, ensure_ascii=False, indent=1)
+            os.replace(gecici, self._adlar_yolu())
+        c = self.db()
+        c.execute("UPDATE medya SET ozel_ad=? WHERE id=?", (ad, mid))
+        c.commit()
+        return self.al(mid)
 
     # ---------- yardımcılar ----------
     def _ffmpeg_bul(self):
@@ -271,6 +416,7 @@ class Kutuphane:
             c.execute("DELETE FROM medya WHERE id=?", (mid,))
             self._kucuk_sil(mid)
         c.commit()
+        self._ozel_adlari_uygula()
         self.tarama.update(durum="tamam", bulunan=len(gorulen), son=time.time(), yeni=yeni, silinen=len(silinen))
         print("Tarama bitti: %d dosya (%d yeni, %d kaldırıldı)" % (len(gorulen), yeni, len(silinen)))
         threading.Thread(target=self._fotograf_tarihleri, daemon=True).start()
@@ -331,6 +477,11 @@ class Kutuphane:
     # ---------- sorgular ----------
     def satir(self, r):
         d = dict(r)
+        d["dosya_adi"] = d["ad"]
+        if d.get("ozel_ad"):
+            d["ad"] = d["ozel_ad"]
+            if d["tur"] == "muzik":
+                d["baslik"] = d["ozel_ad"]
         d["oynatilabilir"] = d.get("uzanti") in TARAYICI_VIDEO if d["tur"] == "video" else True
         return d
 
@@ -341,9 +492,9 @@ class Kutuphane:
             sql += " AND (m.klasor=? OR m.klasor LIKE ? ESCAPE '\\')"
             p += [klasor, like_kacis(klasor) + "/%"]
         if ara:
-            sql += " AND (katla(m.ad) LIKE ? OR katla(m.baslik) LIKE ? OR katla(m.sanatci) LIKE ? OR katla(m.album) LIKE ?)"
+            sql += " AND (katla(m.ozel_ad) LIKE ? OR katla(m.ad) LIKE ? OR katla(m.baslik) LIKE ? OR katla(m.sanatci) LIKE ? OR katla(m.album) LIKE ?)"
             a = "%" + katla(ara) + "%"
-            p += [a, a, a, a]
+            p += [a, a, a, a, a]
         sira_sql = {
             "yeni": "m.tarih DESC", "eski": "m.tarih ASC", "ad": "m.klasor, m.ad COLLATE NOCASE",
             "boyut": "m.boyut DESC", "rastgele": "RANDOM()", "eklenme": "m.eklenme DESC",
@@ -450,11 +601,11 @@ class Kutuphane:
     def ara(self, q, adet=12):
         k = katla(q)
         a = "%" + k + "%"
-        sql = """SELECT * FROM medya WHERE katla(ad) LIKE ? OR katla(baslik) LIKE ? OR katla(sanatci) LIKE ?
-                 OR katla(album) LIKE ? OR katla(klasor) LIKE ?
-                 ORDER BY CASE WHEN katla(ad) LIKE ? THEN 0 ELSE 1 END, tarih DESC LIMIT ?"""
+        sql = """SELECT * FROM medya WHERE katla(ozel_ad) LIKE ? OR katla(ad) LIKE ? OR katla(baslik) LIKE ?
+                 OR katla(sanatci) LIKE ? OR katla(album) LIKE ? OR katla(klasor) LIKE ?
+                 ORDER BY CASE WHEN katla(ozel_ad) LIKE ? THEN 0 WHEN katla(ad) LIKE ? THEN 1 ELSE 2 END, tarih DESC LIMIT ?"""
         sonuc = {"video": [], "foto": [], "muzik": [], "belge": []}
-        for r in self.db().execute(sql, (a, a, a, a, a, k + "%", 400)):
+        for r in self.db().execute(sql, (a, a, a, a, a, a, a, k + "%", 400)):
             l = sonuc[r["tur"]]
             if len(l) < adet:
                 l.append(self.satir(r))

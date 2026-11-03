@@ -380,3 +380,20 @@ body.calar-acik .bildirim { bottom: 100px; }
 .alt-baslik { font-size: 15px; color: var(--metin-2); font-weight: 600; margin: 26px 0 12px; }
 .filtre-kutu { height: 34px; border-radius: 10px; border: 1px solid var(--cizgi); background: var(--yuzey); color: var(--metin); padding: 0 12px; font: inherit; font-size: 14px; outline: none; min-width: 200px; }
 .filtre-kutu:focus { border-color: var(--vurgu); }
+
+/* ---------- ad değiştirme ---------- */
+.kalem { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-left: 4px; vertical-align: middle; border: 0; border-radius: 7px; background: transparent; color: var(--metin-3); opacity: 0; transition: opacity .15s, background .15s; cursor: pointer; padding: 0; }
+.kalem svg { width: 15px; height: 15px; }
+.kalem:hover { background: var(--yuzey-3); color: var(--vurgu); }
+:is(.vkart, .mkart, .belge, .parca, .izle h1, #ikBilgi, h1, h3, h4):hover .kalem, .kalem:focus-visible { opacity: 1; }
+.izle h1 .kalem, #ikBilgi .kalem { opacity: .55; }
+@media (hover: none) { .kalem { opacity: .6; } }
+.ad-metin { cursor: text; }
+.ad-kutu { font: inherit; color: var(--metin); background: var(--yuzey); border: 2px solid var(--vurgu); border-radius: 8px; padding: 2px 8px; width: min(100%, 520px); outline: none; box-shadow: 0 0 0 4px color-mix(in srgb, var(--vurgu) 15%, transparent); }
+#ikBilgi .ad-kutu { background: #222; color: #fff; width: 320px; }
+#ikBilgi .kalem { color: #ccc; }
+.vkart h3, .mkart h4, .belge h4 { -webkit-line-clamp: 3; }
+.cop-btn:hover { color: #e03131 !important; background: color-mix(in srgb, #e03131 12%, transparent) !important; }
+.kalem + .kalem { margin-left: 0; }
+.bildirim { display: flex; align-items: center; gap: 14px; }
+.bildirim-eylem { border: 0; background: var(--vurgu); color: #fff; font-weight: 700; padding: 6px 12px; border-radius: 8px; cursor: pointer; }

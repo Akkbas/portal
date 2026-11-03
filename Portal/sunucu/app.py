@@ -206,6 +206,53 @@ def izleme(mid):
     return jsonify({"ok": True})
 
 
+@app.route("/api/ad/<int:mid>", methods=["POST"])
+def ad_degistir(mid):
+    """Dosyaya Portal içinde görünen bir ad verir. Diskteki dosyanın adı DEĞİŞMEZ."""
+    v = request.get_json(force=True, silent=True) or {}
+    m = kutup.ad_ver(mid, v.get("ad"))
+    if not m:
+        abort(404)
+    return jsonify(m)
+
+
+@app.route("/api/sil/<int:mid>", methods=["POST"])
+def sil(mid):
+    """Dosyayı çöp kutusuna (Portal\\Cop) taşır; geri alınabilir."""
+    if not yerel_istek():
+        abort(403)
+    try:
+        r = kutup.sil(mid)
+    except OSError as ex:
+        return jsonify({"hata": "Dosya taşınamadı: %s" % ex}), 500
+    if not r:
+        abort(404)
+    return jsonify(r)
+
+
+@app.route("/api/cop")
+def cop():
+    return jsonify(kutup.cop_liste())
+
+
+@app.route("/api/cop/geri/<cid>", methods=["POST"])
+def cop_geri(cid):
+    if not yerel_istek():
+        abort(403)
+    r = kutup.geri_al(cid)
+    if not r:
+        abort(404)
+    return jsonify(r)
+
+
+@app.route("/api/cop/bosalt", methods=["POST"])
+def cop_bosalt():
+    if not yerel_istek():
+        abort(403)
+    v = request.get_json(force=True, silent=True) or {}
+    return jsonify({"silinen": kutup.cop_bosalt(v.get("id"))})
+
+
 @app.route("/kucuk/<int:mid>")
 def kucuk(mid):
     y = kutup.kucuk_resim(mid, bekleme=False)
