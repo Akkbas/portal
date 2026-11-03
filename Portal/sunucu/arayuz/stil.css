@@ -512,3 +512,13 @@ label.cip { cursor: pointer; }
 .ani.fazla { display: grid; place-items: center; background: var(--yuzey-2); color: var(--metin-2); font-weight: 700; font-size: 15px; }
 .ani.fazla:hover { background: var(--vurgu-acik); color: var(--vurgu); }
 .foto-izgara.gecmis-seri .ani { width: auto; border-radius: 8px; }
+
+.etiket-duzenle-btn { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 14px; border: 0; background: transparent; color: var(--metin-3); font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.etiket-duzenle-btn svg { width: 14px; height: 14px; }
+.etiket-duzenle-btn:hover { color: var(--vurgu); background: var(--vurgu-acik); }
+.es-satir .kalem { opacity: .85 !important; }
+.es-alt a { color: var(--vurgu); font-weight: 600; }
+.bolum-not { margin: -6px 0 14px; font-size: 13.5px; color: var(--metin-2); }
+.ana-fotolar { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.kalkiyor { transition: opacity .3s, transform .3s; opacity: 0; transform: scale(.94); }
+#ikEtiket .etiket-duzenle-btn { color: #bbb; }

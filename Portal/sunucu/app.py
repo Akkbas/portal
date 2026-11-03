@@ -208,7 +208,8 @@ def ana_sayfa_verisi():
     return jsonify({
         "devam": kutup.devam(8),
         "onerilen": kutup.onerilen("video", 12),
-        "fotolar": kutup.liste("foto", "yeni", adet=12),
+        "fotolar": kutup.son_etiketsiz("foto", 12),
+        "etiketsiz": {"video": kutup.etiketsiz_sayisi("video"), "foto": kutup.etiketsiz_sayisi("foto")},
         "muzik": kutup.onerilen("muzik", 10),
         "belgeler": kutup.liste("belge", "eklenme", adet=6),
         "sayilar": {t: kutup.say(t) for t in UZANTILAR},

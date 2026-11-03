@@ -829,21 +829,12 @@ class Kutuphane:
                 "burada": burada, "klasorler": liste}
 
     def oneriler(self, mid, adet=20):
+        """İzleme sayfasının yanındaki liste: her açılışta rastgele."""
         m = self.al(mid)
         if not m:
             return []
-        c = self.db()
-        ayni = [self.satir(r) for r in c.execute(
-            "SELECT * FROM medya WHERE tur=? AND klasor=? AND id<>? ORDER BY ad COLLATE NOCASE", (m["tur"], m["klasor"], mid))]
-        # aynı klasörde bu dosyadan sonrakiler önce (dizi bölümleri gibi)
-        sonra = [x for x in ayni if x["ad"].lower() > m["ad"].lower()]
-        once = [x for x in ayni if x["ad"].lower() <= m["ad"].lower()]
-        liste = sonra + once
-        if len(liste) < adet:
-            for r in c.execute("SELECT * FROM medya WHERE tur=? AND klasor<>? ORDER BY RANDOM() LIMIT ?",
-                               (m["tur"], m["klasor"], adet - len(liste))):
-                liste.append(self.satir(r))
-        return liste[:adet]
+        sql = "SELECT * FROM medya WHERE tur=? AND id<>? ORDER BY RANDOM() LIMIT ?"
+        return [self.satir(r) for r in self.db().execute(sql, (m["tur"], mid, adet))]
 
     def devam(self, adet=12):
         sql = """SELECT m.*, i.konum, i.sure AS izleme_sure FROM izleme i JOIN medya m ON m.id=i.id
@@ -851,18 +842,24 @@ class Kutuphane:
                  ORDER BY i.son DESC LIMIT ?"""
         return [self.satir(r) for r in self.db().execute(sql, (adet,))]
 
+    def etiketsiz_sayisi(self, tur):
+        return self.db().execute(
+            "SELECT COUNT(*) FROM medya WHERE tur=? AND yol NOT IN (SELECT yol FROM etiket)", (tur,)).fetchone()[0]
+
     def onerilen(self, tur="video", adet=12):
-        """Günlük değişen karışık öneri: henüz izlenmemişler + yeni eklenenler."""
-        tohum = int(time.strftime("%Y%m%d"))
-        c = self.db()
-        tum = [r[0] for r in c.execute(
-            "SELECT m.id FROM medya m LEFT JOIN izleme i ON i.id=m.id WHERE m.tur=? AND (i.sayi IS NULL OR i.sayi=0)", (tur,))]
-        if len(tum) < adet:
-            tum = [r[0] for r in c.execute("SELECT id FROM medya WHERE tur=?", (tur,))]
-        rnd = random.Random(tohum)
-        rnd.shuffle(tum)
-        secilen = tum[:adet]
-        return [self.al(i) for i in secilen if i]
+        """Ana sayfa önerileri, her açılışta rastgele. Etiketlenmemiş dosya varken
+        yalnızca onlar gösterilir (etiketleme kolay olsun); hepsi etiketlenince tümü."""
+        sql = "SELECT * FROM medya WHERE tur=? AND yol NOT IN (SELECT yol FROM etiket) ORDER BY RANDOM() LIMIT ?"
+        l = [self.satir(r) for r in self.db().execute(sql, (tur, adet))]
+        if not l:
+            l = [self.satir(r) for r in self.db().execute("SELECT * FROM medya WHERE tur=? ORDER BY RANDOM() LIMIT ?", (tur, adet))]
+        return l
+
+    def son_etiketsiz(self, tur="foto", adet=12):
+        """En yeni etiketlenmemiş fotoğraflar; hepsi etiketliyse en yeniler."""
+        sql = "SELECT * FROM medya WHERE tur=? AND yol NOT IN (SELECT yol FROM etiket) ORDER BY tarih DESC LIMIT ?"
+        l = [self.satir(r) for r in self.db().execute(sql, (tur, adet))]
+        return l or self.liste(tur, "yeni", adet=adet)
 
     def izleme_kaydet(self, mid, konum, sure, bitti=False):
         c = self.db()

@@ -176,7 +176,7 @@ async function etiketleriYenile() { try { ETIKETLER = await api("/api/etiketler"
    o etiket eklenir ve liste kaybolur. Sonradan değiştirmek için "Etiket" düğmesi. */
 function hizliEtiketler(m, kucuk = false) {
   if (!ETIKETLER.length) return kucuk ? "" : `<button type="button" class="etiket-ekle" data-etk-ekle="${m.id}">+ Etiket oluştur</button>`;
-  return `<span class="hizli-etiketler${kucuk ? " kucuk" : ""}">${ETIKETLER.map((e) => `<button type="button" class="hizli-etk" data-hizli-id="${m.id}" data-hizli-ad="${esc(e.ad)}">${esc(e.ad)}</button>`).join("")}${kucuk ? "" : `<button type="button" class="etiket-ekle" data-etk-ekle="${m.id}" title="Yeni etiket oluştur">+ Yeni</button>`}</span>`;
+  return `<span class="hizli-etiketler${kucuk ? " kucuk" : ""}">${ETIKETLER.map((e) => `<button type="button" class="hizli-etk" data-hizli-id="${m.id}" data-hizli-ad="${esc(e.ad)}">${esc(e.ad)}</button>`).join("")}${kucuk ? "" : `<button type="button" class="etiket-ekle" data-etk-ekle="${m.id}" title="Yeni etiket oluştur">+ Yeni</button><button type="button" class="etiket-duzenle-btn" data-etk-ekle="${m.id}" title="Etiketleri düzenle / sil">${KALEM}<span>Düzenle</span></button>`}</span>`;
 }
 function etiketKucuk(m) {
   medyaHatirla(m);
@@ -188,7 +188,7 @@ function etiketSatiri(m) {
   if (!m.etiketler?.length) return `<div class="etiket-satiri etiketsiz" data-etk-id="${m.id}">${ETK_IKON}${hizliEtiketler(m)}</div>`;
   return `<div class="etiket-satiri" data-etk-id="${m.id}">${ETK_IKON}
     ${m.etiketler.map((e) => `<a class="etiket-cip" href="${etiketHref(e)}">${esc(e)}<button type="button" class="etiket-cikar" data-cikar="${esc(e)}" title="Bu etiketi kaldır">×</button></a>`).join("")}
-    <button type="button" class="etiket-ekle" data-etk-ekle="${m.id}">${ETK_IKON}Etiket</button></div>`;
+    <button type="button" class="etiket-ekle" data-etk-ekle="${m.id}" title="Etiket ekle, değiştir, yeniden adlandır ya da sil">${ETK_IKON}Etiketi değiştir</button></div>`;
 }
 async function etiketleriKaydet(id, liste) {
   const m = await post(`/api/medya/${id}/etiketler`, { etiketler: liste });
@@ -201,6 +201,13 @@ async function etiketleriKaydet(id, liste) {
   await etiketleriYenile();
   if (ETIKETLER.map((e) => e.ad).join("|") !== onceki) hizliListeleriTazele();
   for (const l of [IK.liste, CALAR.liste]) l.forEach((x) => { if (x.id === m.id) x.etiketler = m.etiketler; });
+  if (m.etiketler?.length) {
+    // ana sayfadaki "etiket bekleyenler" listesinden çıkar
+    $$(`.etiketsiz-liste a.vkart[href="#/izle/${m.id}"], .etiketsiz-liste [data-id="${m.id}"]`).forEach((k) => {
+      k.classList.add("kalkiyor");
+      setTimeout(() => k.parentNode && k.parentNode.removeChild(k), 350);
+    });
+  }
   return m;
 }
 function hizliListeleriTazele() {
@@ -220,7 +227,7 @@ async function etiketSecici(id, cagiran) {
   const kutu = document.createElement("div");
   kutu.className = "etiket-secici";
   kutu.innerHTML = `<div class="es-ust"><input type="search" placeholder="Etiket ara ya da yeni yaz…" autocomplete="off"><button type="button" class="kucuk-btn es-tamam">Tamam</button></div>
-    <div class="es-liste"></div><div class="es-alt">Birden fazla etiket seçebilirsin. Enter ile yeni etiket oluşur.</div>`;
+    <div class="es-liste"></div><div class="es-alt">Birden fazla etiket seçebilirsin. Enter ile yeni etiket oluşur. ✏ ile adını değiştir, 🗑 ile etiketi sil. <a href="#/etiketler">Tüm etiketleri yönet</a></div>`;
   document.body.appendChild(kutu);
   const r = cagiran.getBoundingClientRect();
   const ust = Math.min(r.bottom + 6, innerHeight - 380);
@@ -501,8 +508,13 @@ async function sayfaAna() {
   if (saglik?.uyarilar?.length) h += `<a class="saglik-uyari" href="#/ayarlar">${IKON.kalkan}<div><b>Disk uyarısı</b><span>${esc(saglik.uyarilar[0])}</span></div></a>`;
   // sıra: videolar, fotoğraflar, Vikipedi, geçmişte bugün, sonra klasörler/müzik/belgeler
   if (v.devam.length) h += `<section class="bolum"><div class="bolum-bas"><h2>İzlemeye devam et</h2></div><div class="yatay">${v.devam.map(vkart).join("")}</div></section>`;
-  if (v.onerilen.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Senin için önerilen videolar</h2><a href="#/videolar">Tümünü gör</a></div><div class="izgara">${v.onerilen.slice(0, 8).map(vkart).join("")}</div></section>`;
-  if (v.fotolar.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Son fotoğraflar</h2><a href="#/fotograflar">Tümünü gör</a></div><div class="yatay" id="anaFotolar">${v.fotolar.map((m, i) => `<a class="foto-izgara-tek" href="javascript:void(0)" data-i="${i}"><img loading="lazy" src="/kucuk/${m.id}" alt=""></a>`).join("")}</div></section>`;
+  const ev = v.etiketsiz || {};
+  if (v.onerilen.length) h += `<section class="bolum"><div class="bolum-bas"><h2>${ev.video ? "Etiket bekleyen videolar" : "Senin için önerilen videolar"}</h2><a href="#/videolar">Tümünü gör</a></div>
+    ${ev.video ? `<p class="bolum-not">${ev.video.toLocaleString("tr-TR")} video henüz etiketlenmedi. Etiket verdiğin video buradan kalkar; hepsi etiketlenince tüm videolar normal şekilde önerilir.</p>` : ""}
+    <div class="izgara ${ev.video ? "etiketsiz-liste" : ""}">${v.onerilen.slice(0, 8).map(vkart).join("")}</div></section>`;
+  if (v.fotolar.length) h += `<section class="bolum"><div class="bolum-bas"><h2>${ev.foto ? "Etiket bekleyen fotoğraflar" : "Son fotoğraflar"}</h2><a href="#/fotograflar">Tümünü gör</a></div>
+    ${ev.foto ? `<p class="bolum-not">${ev.foto.toLocaleString("tr-TR")} fotoğraf henüz etiketlenmedi. Üzerine gelip bir etikete tıkla; etiketlenen fotoğraf buradan kalkar.</p>` : ""}
+    <div class="foto-izgara ana-fotolar ${ev.foto ? "etiketsiz-liste" : ""}" id="anaFotolar">${v.fotolar.map((m, i) => fotoKucuk(m, i)).join("")}</div></section>`;
   if (kesfet.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Vikipedi'den bugün</h2><a href="#/wiki">Keşfetmeye devam et</a></div><div class="makale-izgara">${kesfet.map((o, i) => makaleKart(o, i === 0)).join("")}</div></section>`;
   if (gecmis.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Geçmişte bugün</h2><a href="#/gecmis">Tümünü gör (${gecmis.reduce((t, g) => t + (g.toplam || g.ogeler.length), 0)})</a></div>${gecmisOzet(gecmis)}</section>`;
   if (kok.klasorler.length) {
