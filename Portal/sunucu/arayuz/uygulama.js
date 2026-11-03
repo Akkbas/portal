@@ -217,7 +217,9 @@ function hizliListeleriTazele() {
 }
 function fotoEtiket(m) {
   medyaHatirla(m);
-  const ic = m.etiketler?.length ? m.etiketler.map((e) => `<span>#${esc(e)}</span>`).join("") : hizliEtiketler(m, true);
+  // ızgarada sadece verilmiş etiketler gösterilir; etiketleme fotoğraf açılınca yapılır
+  // (yanlışlıkla etikete tıklanıp fotoğrafın açılmaması sorununu önler)
+  const ic = m.etiketler?.length ? m.etiketler.map((e) => `<span>#${esc(e)}</span>`).join("") : "";
   return `<span class="foto-etk${m.etiketler?.length ? " dolu" : ""}" data-foto-etk="${m.id}">${ic}</span>`;
 }
 async function etiketSecici(id, cagiran) {
@@ -309,6 +311,116 @@ document.addEventListener("click", (e) => {
   }
 }, true);
 
+
+/* ---------------- çoklu seçim: toplu silme ve etiketleme ----------------
+   Bir fotoğrafın/videonun köşesindeki yuvarlağa tıkla → seçim modu açılır.
+   Seçim modunda tıklamak seçer; Shift ile aralık seçilir; Esc çıkar. */
+const SECIM = new Set();
+let secimSon = null;
+const secimKutu = (id) => `<span class="sec-kutu" data-sec="${id}" title="Seç"><svg viewBox="0 0 24 24"><path d="m6 12 4 4 8-8"/></svg></span>`;
+function secimCiz() {
+  document.body.classList.toggle("secim-modu", SECIM.size > 0);
+  $$("[data-sec-id]").forEach((el) => el.classList.toggle("secili", SECIM.has(+el.dataset.secId)));
+  let bar = $("#secimCubugu");
+  if (!SECIM.size) { bar?.remove(); return; }
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "secimCubugu";
+    bar.className = "secim-cubugu";
+    document.body.appendChild(bar);
+  }
+  bar.innerHTML = `<b>${SECIM.size} seçildi</b>
+    <button class="kucuk-btn" data-sec-eylem="hepsi">Bu sayfadakilerin tümünü seç</button>
+    <button class="kucuk-btn" data-sec-eylem="etiket">${ETK_IKON}Etiketle</button>
+    <button class="kucuk-btn sil" data-sec-eylem="sil">${COP}Sil</button>
+    <button class="ikon-btn" data-sec-eylem="iptal" title="Seçimi kaldır (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button>`;
+}
+function secimTemizle() { SECIM.clear(); secimSon = null; secimCiz(); }
+function secimDegistir(el, aralik) {
+  const id = +el.dataset.secId;
+  if (aralik && secimSon) {
+    const hepsi = $$("[data-sec-id]");
+    const a = hepsi.indexOf(secimSon), b = hepsi.indexOf(el);
+    if (a >= 0 && b >= 0) {
+      hepsi.slice(Math.min(a, b), Math.max(a, b) + 1).forEach((x) => SECIM.add(+x.dataset.secId));
+      secimSon = el;
+      return secimCiz();
+    }
+  }
+  SECIM.has(id) ? SECIM.delete(id) : SECIM.add(id);
+  secimSon = el;
+  secimCiz();
+}
+async function topluSil() {
+  const ids = [...SECIM];
+  if (!confirm(`${ids.length} dosya silinsin mi?\n\nDosyalar çöp kutusuna taşınır; “Çöp kutusu” sayfasından geri alabilirsin.`)) return;
+  bildir(`${ids.length} dosya taşınıyor…`, 20000);
+  let r;
+  try { r = await post("/api/sil-toplu", { ids }); } catch (e) { bildir("Silinemedi: " + e.message, 6000); return; }
+  const silinen = new Set(ids.filter((id) => !r.hatalar.some((h) => +h.id === id)));
+  $$("[data-sec-id]").forEach((el) => { if (silinen.has(+el.dataset.secId)) { el.classList.add("kalkiyor"); setTimeout(() => el.parentNode && el.parentNode.removeChild(el), 350); } });
+  IK.liste = IK.liste.filter((x) => !silinen.has(x.id));
+  secimTemizle();
+  bildir(`${r.cop.length} dosya çöp kutusuna taşındı.` + (r.hatalar.length ? ` ${r.hatalar.length} dosya taşınamadı.` : ""), 9000,
+    { metin: "Geri al", fn: async () => { await post("/api/cop/geri-toplu", { ids: r.cop }); bildir("Geri alındı. Liste birkaç saniye içinde güncellenir."); setTimeout(yonlendir, 2500); } });
+}
+async function topluEtiketle(cagiran) {
+  $(".etiket-secici")?.remove();
+  await etiketleriYenile();
+  const kutu = document.createElement("div");
+  kutu.className = "etiket-secici toplu";
+  kutu.innerHTML = `<div class="es-ust"><input type="search" placeholder="Etiket seç ya da yeni yaz…" autocomplete="off"><button type="button" class="kucuk-btn es-tamam">Kapat</button></div>
+    <div class="es-liste"></div><div class="es-alt">Seçilen ${SECIM.size} dosyaya eklenir; var olan etiketleri silinmez.</div>`;
+  document.body.appendChild(kutu);
+  const rr = cagiran.getBoundingClientRect();
+  Object.assign(kutu.style, { left: Math.max(10, Math.min(rr.left, innerWidth - 340)) + "px", top: Math.max(10, rr.top - 360) + "px" });
+  const ara = $("input", kutu), liste = $(".es-liste", kutu);
+  const ciz = () => {
+    const f = ara.value.trim().toLocaleLowerCase("tr-TR");
+    const gor = ETIKETLER.filter((e) => !f || e.ad.toLocaleLowerCase("tr-TR").includes(f));
+    liste.innerHTML = (f && !ETIKETLER.some((e) => e.ad.toLocaleLowerCase("tr-TR") === f) ? `<button type="button" class="es-yeni" data-toplu="${esc(ara.value.trim())}">+ “${esc(ara.value.trim())}” oluştur ve ekle</button>` : "") +
+      gor.map((e) => `<button type="button" class="es-toplu-etk" data-toplu="${esc(e.ad)}">${ETK_IKON}${esc(e.ad)}<small>${e.adet}</small></button>`).join("");
+  };
+  async function uygula(ad) {
+    const ids = [...SECIM];
+    const r = await post("/api/etiket-toplu", { ids, ekle: [ad] });
+    for (const x of r) {
+      const m = MEDYA_ONBELLEK.get(x.id);
+      if (m) { m.etiketler = x.etiketler; $$(`[data-foto-etk="${x.id}"]`).forEach((el) => (el.outerHTML = fotoEtiket(m))); $$(`[data-etk-kucuk="${x.id}"]`).forEach((el) => (el.outerHTML = etiketKucuk(m))); }
+      $$(`.etiketsiz-liste [data-sec-id="${x.id}"]`).forEach((el) => { el.classList.add("kalkiyor"); setTimeout(() => el.parentNode && el.parentNode.removeChild(el), 350); });
+    }
+    await etiketleriYenile();
+    kutu.parentNode && kutu.parentNode.removeChild(kutu);
+    secimTemizle();
+    bildir(`“${ad}” etiketi ${r.length} dosyaya eklendi.`);
+  }
+  ara.addEventListener("input", ciz);
+  ara.addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter" && ara.value.trim()) uygula(ara.value.trim()); if (e.key === "Escape") kutu.remove(); });
+  liste.addEventListener("click", (e) => { const b = e.target.closest("[data-toplu]"); if (b) uygula(b.dataset.toplu); });
+  $(".es-tamam", kutu).onclick = () => kutu.remove();
+  ["click", "mousedown"].forEach((t) => kutu.addEventListener(t, (e) => e.stopPropagation()));
+  ciz();
+  ara.focus();
+}
+document.addEventListener("click", (e) => {
+  const ey = e.target.closest("[data-sec-eylem]");
+  if (ey) {
+    e.preventDefault(); e.stopPropagation();
+    const t = ey.dataset.secEylem;
+    if (t === "iptal") secimTemizle();
+    if (t === "hepsi") { $$("[data-sec-id]").forEach((x) => SECIM.add(+x.dataset.secId)); secimCiz(); }
+    if (t === "sil") topluSil();
+    if (t === "etiket") topluEtiketle(ey);
+    return;
+  }
+  const kutu = e.target.closest(".sec-kutu");
+  const kart = e.target.closest("[data-sec-id]");
+  if (kutu && kart) { e.preventDefault(); e.stopPropagation(); secimDegistir(kart, e.shiftKey); return; }
+  if (SECIM.size && kart) { e.preventDefault(); e.stopPropagation(); secimDegistir(kart, e.shiftKey); }
+}, true);
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && SECIM.size && $("#isikKutu").hidden) secimTemizle(); });
+window.addEventListener("hashchange", () => { if (SECIM.size) secimTemizle(); });
+
 /* ---------------- silme (çöp kutusuna taşıma) ---------------- */
 async function dosyaSil(id, cagiran) {
   const ad = $(`.ad-metin[data-ad-id="${id}"]`)?.textContent || "Bu dosya";
@@ -352,8 +464,8 @@ document.addEventListener("dblclick", (e) => {
 function vkart(m) {
   const ilerleme = m.konum && m.izleme_sure ? Math.min(100, (m.konum / m.izleme_sure) * 100) : 0;
   const kl = klasorAdi(m.klasor);
-  return `<a class="vkart" href="#/izle/${m.id}">
-    <div class="kapak">${kucukResim(m)}
+  return `<a class="vkart" href="#/izle/${m.id}" data-sec-id="${m.id}">
+    <div class="kapak">${kucukResim(m)}${secimKutu(m.id)}
       ${m.sure ? `<span class="sure">${sureFmt(m.sure)}</span>` : ""}
       ${!m.oynatilabilir ? `<span class="etiket-sol">${esc(m.uzanti.slice(1))}</span>` : ""}
       ${ilerleme ? `<span class="ilerleme"><i style="width:${ilerleme}%"></i></span>` : ""}
@@ -428,7 +540,7 @@ function aniKart(m) {
 const CANLI = '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.6" class="dolu"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="9.5" stroke-dasharray="1.6 2.2"/></svg>';
 const gorunenTur = (m) => m.gtur || m.tur;
 function fotoKucuk(m, i) {
-  return `<a href="javascript:void(0)" data-i="${i}" data-id="${m.id}"><img loading="lazy" src="/kucuk/${m.id}" alt="${esc(m.ad)}" onerror="kucukHata(this, true)">${m.canli_video ? `<span class="canli-rozet" title="Canlı fotoğraf">${CANLI}CANLI</span>` : ""}${fotoEtiket(m)}</a>`;
+  return `<a href="javascript:void(0)" data-i="${i}" data-id="${m.id}" data-sec-id="${m.id}">${secimKutu(m.id)}<img loading="lazy" src="/kucuk/${m.id}" alt="${esc(m.ad)}" onerror="kucukHata(this, true)">${m.canli_video ? `<span class="canli-rozet" title="Canlı fotoğraf">${CANLI}CANLI</span>` : ""}${fotoEtiket(m)}</a>`;
 }
 function bosEkran(ikon, baslik, metin) {
   return `<div class="bos">${ikon}<h3>${baslik}</h3><p>${metin}</p></div>`;
@@ -515,7 +627,7 @@ async function sayfaAna() {
     ${ev.video ? `<p class="bolum-not">${ev.video.toLocaleString("tr-TR")} video henüz etiketlenmedi. Etiket verdiğin video buradan kalkar; hepsi etiketlenince tüm videolar normal şekilde önerilir.</p>` : ""}
     <div class="izgara ${ev.video ? "etiketsiz-liste" : ""}">${v.onerilen.slice(0, 8).map(vkart).join("")}</div></section>`;
   if (v.fotolar.length) h += `<section class="bolum"><div class="bolum-bas"><h2>${ev.foto ? "Etiket bekleyen fotoğraflar" : "Son fotoğraflar"}</h2><a href="#/fotograflar">Tümünü gör</a></div>
-    ${ev.foto ? `<p class="bolum-not">${ev.foto.toLocaleString("tr-TR")} fotoğraf henüz etiketlenmedi. Üzerine gelip bir etikete tıkla; etiketlenen fotoğraf buradan kalkar.</p>` : ""}
+    ${ev.foto ? `<p class="bolum-not">${ev.foto.toLocaleString("tr-TR")} fotoğraf henüz etiketlenmedi. Fotoğrafı açıp altındaki etiketlerden birine tıkla; etiketlenen fotoğraf buradan kalkar.</p>` : ""}
     <div class="foto-izgara ana-fotolar ${ev.foto ? "etiketsiz-liste" : ""}" id="anaFotolar">${v.fotolar.map((m, i) => fotoKucuk(m, i)).join("")}</div></section>`;
   if (kesfet.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Vikipedi'den bugün</h2><a href="#/wiki">Keşfetmeye devam et</a></div><div class="makale-izgara">${kesfet.map((o, i) => makaleKart(o, i === 0)).join("")}</div></section>`;
   if (gecmis.length) h += `<section class="bolum"><div class="bolum-bas"><h2>Geçmişte bugün</h2><a href="#/gecmis">Tümünü gör (${gecmis.reduce((t, g) => t + (g.toplam || g.ogeler.length), 0)})</a></div>${gecmisOzet(gecmis)}</section>`;

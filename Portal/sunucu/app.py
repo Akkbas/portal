@@ -283,6 +283,52 @@ def sil(mid):
     return jsonify(r)
 
 
+@app.route("/api/sil-toplu", methods=["POST"])
+def sil_toplu():
+    """Seçilen dosyaları çöp kutusuna taşır (geri alınabilir)."""
+    if not yerel_istek():
+        abort(403)
+    v = request.get_json(force=True, silent=True) or {}
+    tamam, hatalar = [], []
+    for mid in v.get("ids", [])[:5000]:
+        try:
+            r = kutup.sil(int(mid))
+            if r:
+                tamam.append(r["id"])
+        except OSError as ex:
+            hatalar.append({"id": mid, "hata": str(ex)})
+    return jsonify({"cop": tamam, "hatalar": hatalar})
+
+
+@app.route("/api/cop/geri-toplu", methods=["POST"])
+def cop_geri_toplu():
+    if not yerel_istek():
+        abort(403)
+    v = request.get_json(force=True, silent=True) or {}
+    n = 0
+    for cid in v.get("ids", []):
+        if kutup.geri_al(cid):
+            n += 1
+    return jsonify({"geri": n})
+
+
+@app.route("/api/etiket-toplu", methods=["POST"])
+def etiket_toplu():
+    """Seçilen dosyalara etiket ekler (var olan etiketleri korur)."""
+    v = request.get_json(force=True, silent=True) or {}
+    ekle = [e for e in v.get("ekle", []) if e]
+    sonuc = []
+    for mid in v.get("ids", [])[:5000]:
+        m = kutup.al(int(mid))
+        if not m:
+            continue
+        yeni = list(dict.fromkeys((m.get("etiketler") or []) + ekle))
+        m = kutup.etiket_ata(int(mid), yeni)
+        if m:
+            sonuc.append({"id": m["id"], "etiketler": m["etiketler"]})
+    return jsonify(sonuc)
+
+
 @app.route("/api/cop")
 def cop():
     return jsonify(kutup.cop_liste())
