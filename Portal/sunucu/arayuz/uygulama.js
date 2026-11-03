@@ -761,6 +761,39 @@ async function sayfaWiki(parcalar) {
   $("#dahaFazla").onclick = () => yukle(false);
   await yukle(true);
 }
+/* Vikipedi HTML'inden gelip okuma sütununu daraltan her şeyi (sola kaydırılmış
+   kutular, büyük sol boşluklar, içi boş yer tutucular) ekranda ölçerek temizler. */
+function makaleDuzelt(yazi) {
+  const sagaIzin = ".infobox, table.infobox, .thumb, .tright, .tleft, .floatright, .floatleft, figure.mw-halign-right, figure.mw-halign-left, figure[typeof*='mw:File/Thumb']";
+  const genislik = yazi.clientWidth;
+  for (const el of yazi.querySelectorAll("*")) {
+    if (el.closest("table.infobox, .infobox") && !el.matches(".infobox, table.infobox")) continue;
+    const cs = getComputedStyle(el);
+    if (cs.float !== "none" && !el.matches(sagaIzin)) el.style.float = "none";
+    if (!/^(UL|OL|DD|DL|BLOCKQUOTE|LI)$/.test(el.tagName)) {
+      if (parseFloat(cs.marginLeft) > 40) el.style.marginLeft = "0";
+      if (parseFloat(cs.paddingLeft) > 60) el.style.paddingLeft = "0";
+    }
+    if (cs.position === "absolute" || cs.position === "fixed") el.style.position = "static";
+    // görünür içeriği olmayan ama yer kaplayan kutular
+    if (!/^(IMG|BR|HR|TD|TH|TR|SUP|VIDEO|AUDIO|SVG|svg)$/.test(el.tagName) && !el.textContent.trim() && !el.querySelector("img, svg, video, audio, math")) {
+      const r = el.getBoundingClientRect();
+      if (r.height > 20 || r.width > 40) el.style.display = "none";
+    }
+  }
+  // genişliği sabitlenmiş bloklar sütunu daraltmasın
+  for (const el of yazi.querySelectorAll(":scope > *, :scope > section > *, :scope > div > *, :scope > details > section > *")) {
+    if (el.matches(sagaIzin) || el.tagName === "TABLE") continue;
+    const w = el.getBoundingClientRect().width;
+    if (w && w < genislik * 0.8 && getComputedStyle(el).display === "block" && el.textContent.trim().length > 200) el.style.width = "auto", el.style.maxWidth = "none";
+  }
+  // yüklenemeyen resimler boş kutu bırakmasın
+  yazi.querySelectorAll("img").forEach((img) => img.addEventListener("error", () => {
+    const kap = img.closest("figure, .thumb, .gallerybox") || img;
+    kap.style.display = "none";
+  }, { once: true }));
+}
+
 async function makaleGoster(z, yol) {
   const m = await api(`/api/wiki/makale?z=${z}&yol=${encodeURIComponent(yol)}`);
   if (m.yonlendir) { location.href = m.yonlendir; return; }
@@ -782,6 +815,7 @@ async function makaleGoster(z, yol) {
     const ayni = $$("img", yazi).find((i) => i.getAttribute("src") === m.resim);
     if (ayni) (ayni.closest("tr") || ayni.closest("figure") || ayni.closest(".thumb") || ayni).remove();
   }
+  makaleDuzelt(yazi);
   // ilk gerçek paragrafa büyük baş harf
   const ilkP = $$("p", yazi).find((p) => !p.closest("table, .hatnote, .infobox") && p.textContent.trim().length > 60);
   if (ilkP) ilkP.classList.add("ilk-paragraf");

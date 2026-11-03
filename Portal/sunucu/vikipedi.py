@@ -187,7 +187,7 @@ class ZimDosyasi:
             resim = None
             for img in soup.find_all("img"):
                 src = img.get("src") or img.get("data-src")
-                if not src or src.startswith("data:"):
+                if not src or src.startswith(("data:", "http:", "https:", "//")):
                     continue
                 try:
                     g = int(img.get("width") or 100)
@@ -195,7 +195,10 @@ class ZimDosyasi:
                     g = 100
                 if g < 60:
                     continue
-                resim = self.zim_url(self.coz(e.path, src))
+                ryol = self.coz(e.path, src)
+                if not ryol or self.giris(ryol) is None:
+                    continue
+                resim = self.zim_url(ryol)
                 break
             o = {
                 "z": self.id,
@@ -258,9 +261,14 @@ class ZimDosyasi:
             if s.startswith("data:"):
                 continue
             if s.startswith("http") or s.startswith("//"):
-                el["src"] = ""
+                # internetteki resim çevrimdışı açılamaz: boş kutu bırakmasın
+                el.decompose()
                 continue
-            el["src"] = self.zim_url(self.coz(e.path, s)) or ""
+            hedef_yol = self.coz(e.path, s)
+            if el.name == "img" and (not hedef_yol or self.giris(hedef_yol) is None):
+                el.decompose()
+                continue
+            el["src"] = self.zim_url(hedef_yol) or ""
             el["loading"] = "lazy"
             if el.has_attr("srcset"):
                 del el["srcset"]
