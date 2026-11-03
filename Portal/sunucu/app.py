@@ -116,6 +116,17 @@ saglik = DiskSagligi(KOK, kutup)
 BOS_GIF = bytes.fromhex("47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b")
 
 
+@app.errorhandler(Exception)
+def hata_yakala(ex):
+    """Beklenmeyen hataları günlüğe yazar ve arayüze anlaşılır bir mesaj döndürür."""
+    from werkzeug.exceptions import HTTPException
+    if isinstance(ex, HTTPException):
+        return ex
+    import traceback
+    traceback.print_exc()
+    return jsonify({"hata": "%s: %s" % (type(ex).__name__, ex)}), 500
+
+
 def yerel_istek():
     return request.remote_addr in ("127.0.0.1", "::1")
 

@@ -19,7 +19,13 @@ const DURUM = { bilgi: null, wikiVar: false };
 /* ---------------- yardımcılar ---------------- */
 async function api(url, secenek) {
   const r = await fetch(url, secenek);
-  if (!r.ok) throw new Error(r.status + " " + url);
+  if (!r.ok) {
+    let ayrinti = "";
+    try { ayrinti = (await r.json()).hata || ""; } catch (e) {}
+    const h = new Error(ayrinti || r.status + " " + url);
+    h.durum = r.status;
+    throw h;
+  }
   return r.json();
 }
 const post = (url, veri) => api(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(veri || {}) });
@@ -144,7 +150,7 @@ function adDuzenle(id, cagiran) {
       if (location.hash.startsWith("#/izle/" + id)) document.title = m.ad + " — Portal";
       bildir(yeni ? "Ad kaydedildi. Aramada bu adla bulabilirsin." : "Özel ad kaldırıldı, dosya adı kullanılıyor.");
     } catch (e) {
-      bildir("Ad kaydedilemedi.");
+      bildir("Ad kaydedilemedi: " + e.message, 6000);
     }
     kapat();
   }
@@ -282,7 +288,7 @@ document.addEventListener("click", (e) => {
     e.preventDefault(); e.stopPropagation();
     const id = hz.dataset.hizliId;
     hz.closest(".hizli-etiketler")?.classList.add("gidiyor");
-    etiketleriKaydet(id, [hz.dataset.hizliAd]).then((m) => bildir(`“${hz.dataset.hizliAd}” etiketi eklendi.`, 1800)).catch(() => bildir("Etiket eklenemedi."));
+    etiketleriKaydet(id, [hz.dataset.hizliAd]).then((m) => bildir(`“${hz.dataset.hizliAd}” etiketi eklendi.`, 1800)).catch((e) => bildir("Etiket eklenemedi: " + e.message, 6000));
     return;
   }
   const ek = e.target.closest("[data-etk-ekle]");

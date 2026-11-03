@@ -48,6 +48,19 @@ def tur_bul(ad):
 _KATLA = str.maketrans("ıİşŞğĞüÜöÖçÇâÂîÎûÛ", "iisSgGuUoOcCaAiIuU")
 
 
+def dosya_degistir(gecici, hedef):
+    """os.replace; Windows'ta dosya o an başka bir program (antivirüs, dizin oluşturucu)
+    tarafından açıksa birkaç kez tekrar dener."""
+    for i in range(10):
+        try:
+            os.replace(gecici, hedef)
+            return
+        except PermissionError:
+            if i == 9:
+                raise
+            time.sleep(0.2 * (i + 1))
+
+
 def like_kacis(metin):
     return metin.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
@@ -97,7 +110,7 @@ class Kutuphane:
             # Disk aniden çıkarılırsa bozulan indeks açılışta otomatik yenilenir.
             c.execute("PRAGMA journal_mode=WAL")
             c.execute("PRAGMA synchronous=NORMAL")
-            c.execute("PRAGMA busy_timeout=5000")
+            c.execute("PRAGMA busy_timeout=30000")
             self.yerel.c = c
         return c
 
@@ -208,7 +221,7 @@ class Kutuphane:
         gecici = self._etiket_yolu() + ".tmp"
         with open(gecici, "w", encoding="utf-8") as f:
             json.dump(self.etk, f, ensure_ascii=False, indent=1)
-        os.replace(gecici, self._etiket_yolu())
+        dosya_degistir(gecici, self._etiket_yolu())
 
     def _etiket_bul(self, ad):
         """Aynı etiketin farklı yazımlarını (zara / Zara / ZARA) tek etiket sayar."""
@@ -323,7 +336,7 @@ class Kutuphane:
         gecici = self._cop_kayit_yolu() + ".tmp"
         with open(gecici, "w", encoding="utf-8") as f:
             json.dump(liste, f, ensure_ascii=False, indent=1)
-        os.replace(gecici, self._cop_kayit_yolu())
+        dosya_degistir(gecici, self._cop_kayit_yolu())
 
     @staticmethod
     def _bos_ad(yol):
@@ -437,7 +450,7 @@ class Kutuphane:
             gecici = self._adlar_yolu() + ".tmp"
             with open(gecici, "w", encoding="utf-8") as f:
                 json.dump(adlar, f, ensure_ascii=False, indent=1)
-            os.replace(gecici, self._adlar_yolu())
+            dosya_degistir(gecici, self._adlar_yolu())
         c = self.db()
         c.execute("UPDATE medya SET ozel_ad=? WHERE id=?", (ad, mid))
         c.commit()
@@ -513,6 +526,7 @@ class Kutuphane:
                 for d in self.kategori_klasorleri(tur):
                     hedefler.append((tur, d))
         yeni = 0
+        son_kayit = time.time()
         for beklenen_tur, d in hedefler:
             for kok, dizinler, dosyalar in os.walk(d):
                 dizinler[:] = [x for x in dizinler if x.lower() not in ATLA and not x.startswith(".")]
@@ -562,8 +576,9 @@ class Kutuphane:
                                      VALUES(:yol,:tur,:ad,:klasor,:uzanti,:boyut,:mtime,:tarih,:eklenme,
                                      :sanatci,:album,:baslik,:sure)""", kayit)
                         yeni += 1
-                    if self.tarama["islenen"] % 200 == 0:
+                    if time.time() - son_kayit > 0.4:
                         c.commit()
+                        son_kayit = time.time()
         # silinmiş dosyaları indeksten çıkar (dosyaların kendisine dokunulmaz)
         silinen = [v[0] for k, v in mevcut.items() if k not in gorulen]
         for mid in silinen:
@@ -587,18 +602,17 @@ class Kutuphane:
         c = self.db()
         satirlar = c.execute("SELECT id,yol FROM medya WHERE tur='video' AND genislik IS NULL").fetchall()
         for i, r in enumerate(satirlar):
+            # yavaş disk okuması (ffmpeg) yazma kilidi dışında yapılır; yazma anında bitirilir.
+            # Böylece kullanıcının ad/etiket kayıtları beklemez.
             try:
                 b = self.video_bilgi(self.tam_yol(r["yol"]))
-                c.execute("UPDATE medya SET genislik=?, yukseklik=?, sure=COALESCE(sure, ?) WHERE id=?",
-                          (b.get("genislik") or -1, b.get("yukseklik") or -1, b.get("sure"), r["id"]))
-                if b.get("cekim"):
-                    c.execute("UPDATE medya SET tarih=? WHERE id=?", (b["cekim"], r["id"]))
             except Exception:
-                c.execute("UPDATE medya SET genislik=-1 WHERE id=?", (r["id"],))
-            if i % 25 == 0:
-                c.commit()
+                b = {}
+            self._kisa_yaz(lambda c: (
+                c.execute("UPDATE medya SET genislik=?, yukseklik=?, sure=COALESCE(sure, ?) WHERE id=?",
+                          (b.get("genislik") or -1, b.get("yukseklik") or -1, b.get("sure"), r["id"])),
+                b.get("cekim") and c.execute("UPDATE medya SET tarih=? WHERE id=?", (b["cekim"], r["id"]))))
             time.sleep(0.02)
-        c.commit()
 
     def _fotograf_tarihleri(self):
         """Fotoğrafların EXIF çekim tarihini okur (sıralama için)."""
@@ -608,6 +622,12 @@ class Kutuphane:
             return
         c = self.db()
         satirlar = c.execute("SELECT id,yol FROM medya WHERE tur='foto' AND genislik IS NULL").fetchall()
+        bekleyen = []
+
+        def yaz():
+            if bekleyen:
+                self._kisa_yaz(lambda c: c.executemany("UPDATE medya SET genislik=?, yukseklik=?, tarih=COALESCE(?, tarih) WHERE id=?", bekleyen))
+                bekleyen.clear()
         for i, r in enumerate(satirlar):
             try:
                 with Image.open(self.tam_yol(r["yol"])) as im:
@@ -625,15 +645,26 @@ class Kutuphane:
                             tarih = time.mktime(time.strptime(str(ds)[:19], "%Y:%m:%d %H:%M:%S"))
                         except Exception:
                             tarih = None
-                    if tarih:
-                        c.execute("UPDATE medya SET genislik=?,yukseklik=?,tarih=? WHERE id=?", (g, y, tarih, r["id"]))
-                    else:
-                        c.execute("UPDATE medya SET genislik=?,yukseklik=? WHERE id=?", (g, y, r["id"]))
+                    bekleyen.append((g, y, tarih, r["id"]))
             except Exception:
-                c.execute("UPDATE medya SET genislik=0 WHERE id=?", (r["id"],))
-            if i % 100 == 0:
+                bekleyen.append((0, 0, None, r["id"]))
+            if len(bekleyen) >= 20:
+                yaz()
+        yaz()
+
+    def _kisa_yaz(self, islem, deneme=5):
+        """Arka plan işlerinin yazmalarını kısa tutar ve kilitlenirse tekrar dener."""
+        for i in range(deneme):
+            c = self.db()
+            try:
+                islem(c)
                 c.commit()
-        c.commit()
+                return
+            except sqlite3.OperationalError as ex:
+                c.rollback()
+                if "locked" not in str(ex) and "busy" not in str(ex):
+                    raise
+                time.sleep(0.5 * (i + 1))
 
     def _muzik_etiket(self, tam):
         bilgi = {}
